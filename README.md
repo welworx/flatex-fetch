@@ -48,6 +48,12 @@ the passphrase via the `FLATEX_FETCH_PASSPHRASE` environment variable, and
 the portal username/password via `FLATEX_FETCH_USERNAME`/
 `FLATEX_FETCH_PASSWORD` to skip the interactive prompts.
 
+`fetch`/`list` also accept `FLATEX_FETCH_USERNAME`/`FLATEX_FETCH_PASSWORD`
+directly, skipping `profile add` and profiles.json entirely — useful for
+cron/CI without a stored profile. `-profile`/`-all-profiles` are ignored in
+that mode; the portal domain defaults to `flatex.at`, overridable via
+`FLATEX_FETCH_DOMAIN`.
+
 ## Usage
 
     flatex-fetch fetch                                # first configured profile, last 7 days
@@ -139,21 +145,6 @@ Optional: `.pre-commit-config.yaml` runs `go fmt`, `go vet`, and `go test` on co
 ```bash
 pip install pre-commit
 pre-commit install
-```
-
-## Project Structure
-
-```
-flatex-fetch/
-├── main.go                 # CLI entry point and command dispatch
-├── cli_profile.go          # profile add/list/remove
-├── cli_fetch.go            # fetch command
-├── go.mod / go.sum
-├── .golangci.yml           # linter configuration
-├── .pre-commit-config.yaml
-└── internal/
-    ├── config/             # credential encryption, profile storage
-    └── portal/             # flatex.at HTTP client: login, listing, download
 ```
 
 ## Dependencies

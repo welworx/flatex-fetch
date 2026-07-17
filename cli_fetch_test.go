@@ -31,6 +31,33 @@ func TestResolveProfilesAndCredsDefaultsToFirstProfile(t *testing.T) {
 	}
 }
 
+func TestResolveProfilesAndCredsEnvBypassesProfiles(t *testing.T) {
+	isolateConfigDir(t)
+	t.Setenv("FLATEX_FETCH_USERNAME", "alice")
+	t.Setenv("FLATEX_FETCH_PASSWORD", "pw")
+
+	// -profile is ignored; no profiles.json/passphrase needed at all.
+	profiles, creds, err := resolveProfilesAndCreds("someprofile", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(profiles) != 1 || profiles[0].Name != "from-env" || profiles[0].Username != "alice" || profiles[0].Domain != "flatex.at" {
+		t.Fatalf("profiles = %+v, want single from-env/alice/flatex.at", profiles)
+	}
+	if creds["from-env"] != "pw" {
+		t.Fatalf("creds = %+v, want from-env -> pw", creds)
+	}
+
+	t.Setenv("FLATEX_FETCH_DOMAIN", "flatex.de")
+	profiles, _, err = resolveProfilesAndCreds("", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if profiles[0].Domain != "flatex.de" {
+		t.Fatalf("domain = %q, want flatex.de override", profiles[0].Domain)
+	}
+}
+
 func TestDateRange(t *testing.T) {
 	now := time.Date(2026, 7, 16, 12, 0, 0, 0, time.UTC)
 

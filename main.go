@@ -31,6 +31,12 @@ Logs into flatex.at and fetches documents (trade confirmations, dividend
 notices, ...) as raw PDFs, or lists them without downloading. Supports
 several portal logins ("profiles") in one run.
 
+DISCLAIMER
+  Personal, educational use only. Unofficial, not affiliated with flatex.
+  Drives flatex's web portal like a browser would, which may not be
+  permitted under flatex's Terms of Service — check those before using
+  this. Use is entirely at your own risk.
+
 USAGE
   flatex-fetch <command> [flags]
 
@@ -75,8 +81,13 @@ FORMAT TEMPLATE
 
 ENVIRONMENT
   FLATEX_FETCH_PASSPHRASE   credentials.enc master passphrase (skip the prompt)
-  FLATEX_FETCH_USERNAME     portal username for 'profile add' (skip the prompt)
-  FLATEX_FETCH_PASSWORD     portal password for 'profile add' (skip the prompt)
+  FLATEX_FETCH_USERNAME     portal username for 'profile add' (skip the prompt);
+                            for fetch/list, set with FLATEX_FETCH_PASSWORD to
+                            skip profiles.json entirely (-profile/-all-profiles
+                            are ignored) and log in as "from-env" instead
+  FLATEX_FETCH_PASSWORD     portal password, see FLATEX_FETCH_USERNAME above
+  FLATEX_FETCH_DOMAIN       portal domain for the FLATEX_FETCH_USERNAME/PASSWORD
+                            login (default flatex.at)
 
 FILES
   ~/.config/flatex-fetch/profiles.json      profile names, usernames, domains
@@ -104,6 +115,9 @@ EXAMPLES
   # non-interactive setup for cron/CI
   FLATEX_FETCH_PASSPHRASE=... FLATEX_FETCH_USERNAME=... FLATEX_FETCH_PASSWORD=... \
     flatex-fetch profile add main
+
+  # fetch without a stored profile at all
+  FLATEX_FETCH_USERNAME=... FLATEX_FETCH_PASSWORD=... flatex-fetch fetch
 `)
 	return 0
 }

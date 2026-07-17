@@ -49,7 +49,21 @@ func dateRange(days int, from, to string, now time.Time) (time.Time, time.Time, 
 // profileFlagsValid) since that's a usage error (exit 2), distinct from the
 // runtime errors here (exit 1). Shared by fetch and list, which both need
 // exactly this before talking to the portal.
+//
+// If FLATEX_FETCH_USERNAME/PASSWORD are set, profiles.json/credentials.enc
+// are skipped entirely (-profile/-all-profiles are ignored) and a single
+// synthetic "from-env" profile is used instead, for cron/CI use without a
+// stored profile.
 func resolveProfilesAndCreds(profileName string, allProfiles bool) ([]config.Profile, map[string]string, error) {
+	if envUser, envPass := os.Getenv("FLATEX_FETCH_USERNAME"), os.Getenv("FLATEX_FETCH_PASSWORD"); envUser != "" && envPass != "" {
+		domain := os.Getenv("FLATEX_FETCH_DOMAIN")
+		if domain == "" {
+			domain = "flatex.at"
+		}
+		p := config.Profile{Name: "from-env", Username: envUser, Domain: domain}
+		return []config.Profile{p}, map[string]string{"from-env": envPass}, nil
+	}
+
 	dir, err := config.Dir()
 	if err != nil {
 		return nil, nil, err
