@@ -48,6 +48,12 @@ the passphrase via the `FLATEX_FETCH_PASSPHRASE` environment variable, and
 the portal username/password via `FLATEX_FETCH_USERNAME`/
 `FLATEX_FETCH_PASSWORD` to skip the interactive prompts.
 
+`fetch`/`list` also accept `FLATEX_FETCH_USERNAME`/`FLATEX_FETCH_PASSWORD`
+directly, skipping `profile add` and profiles.json entirely — useful for
+cron/CI without a stored profile. `-profile`/`-all-profiles` are ignored in
+that mode; the portal domain defaults to `flatex.at`, overridable via
+`FLATEX_FETCH_DOMAIN`.
+
 ## Usage
 
     flatex-fetch fetch                                # first configured profile, last 7 days
