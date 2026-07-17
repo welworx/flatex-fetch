@@ -157,6 +157,9 @@ func writeZipEntry(body []byte, destDir string, seen map[string]bool, overwrite 
 		return "", false, fmt.Errorf("%s: expected 1 document in zip, got %d", loc, len(zr.File))
 	}
 	f := zr.File[0]
+	if strings.Contains(f.Name, "..") {
+		return "", false, fmt.Errorf("%s: unsafe zip entry name %q", loc, f.Name)
+	}
 	rc, err := f.Open()
 	if err != nil {
 		return "", false, fmt.Errorf("%s: opening zip entry: %w", loc, err)
