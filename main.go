@@ -18,6 +18,7 @@ func usage() int {
   flatex-fetch profile remove <name>
   flatex-fetch fetch [-profile <name>|-all-profiles] [-out DIR] [-format TEMPLATE] [-user-agent UA] [-days N | -from YYYY-MM-DD -to YYYY-MM-DD] [-all]
   flatex-fetch list [-profile <name>|-all-profiles] [-user-agent UA] [-days N | -from YYYY-MM-DD -to YYYY-MM-DD] [-csv | -json]
+  flatex-fetch upgrade [-check] [-y]
   flatex-fetch -version
 
 Run 'flatex-fetch -help' for a full description and examples.`)
@@ -46,6 +47,7 @@ COMMANDS
   profile remove <name>                    remove a profile
   fetch [flags]                            download new documents
   list [flags]                             list documents without downloading
+  upgrade [-check] [-y]                    check GitHub for a newer release and install it
   -version                                 print the version
 
 FETCH/LIST FLAGS
@@ -62,6 +64,11 @@ FETCH/LIST FLAGS
   list also:
   -csv               output CSV instead of a table
   -json              output JSON instead of a table
+
+UPGRADE FLAGS
+  -check              report whether a newer release exists, without installing it;
+                       exit code: 0 up to date, 1 upgrade available, 2 on error
+  -y                   skip the "Upgrade to vX.Y.Z? [y/N]" confirmation prompt
 
 FORMAT TEMPLATE
   -format takes a path template with <token> placeholders, substituted per
@@ -138,6 +145,8 @@ func run(args []string) int {
 		return runFetch(args[1:])
 	case "list":
 		return runList(args[1:])
+	case "upgrade":
+		return runUpgrade(args[1:])
 	default:
 		return usage()
 	}

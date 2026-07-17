@@ -78,6 +78,21 @@ the portal's own filename. Already-downloaded files are skipped unless
 
 `-user-agent` overrides the built-in browser User-Agent string.
 
+    # check GitHub for a newer release, and install it
+    flatex-fetch upgrade
+    flatex-fetch upgrade -check   # report only, no download/prompt
+    flatex-fetch upgrade -y       # skip the confirmation prompt
+
+`upgrade` fetches the latest GitHub release, and if it's newer than the
+running binary, prompts `Upgrade to vX.Y.Z? [y/N]` before downloading and
+verifying it (SHA-256, against the release's `SHA256SUMS.txt`) and replacing
+the binary in place. The current process keeps running the old binary until
+restarted. `-check` reports availability without downloading or prompting,
+with exit codes scripts can branch on: `0` up to date, `1` upgrade
+available, `2` on error. `-y` skips the prompt; combined with `-check`,
+`-check` wins (no download either way). A local/dev build (`flatex-fetch
+-version` prints `dev`) is always treated as upgradable.
+
 ### Output path templates
 
 `-format` replaces the fixed `<profile>/<filename>` layout with a template,
