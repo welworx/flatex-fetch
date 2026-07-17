@@ -17,6 +17,7 @@ func usage() int {
   flatex-fetch profile list
   flatex-fetch profile remove <name>
   flatex-fetch fetch -profile <name>|-all-profiles [-out DIR] [-user-agent UA] [-days N | -from YYYY-MM-DD -to YYYY-MM-DD] [-all]
+  flatex-fetch list -profile <name>|-all-profiles [-user-agent UA] [-days N | -from YYYY-MM-DD -to YYYY-MM-DD] [-csv | -json]
   flatex-fetch -version`)
 	return 2
 }
@@ -33,6 +34,8 @@ func run(args []string) int {
 		return runProfile(args[1:])
 	case "fetch":
 		return runFetch(args[1:])
+	case "list":
+		return runList(args[1:])
 	default:
 		return usage()
 	}

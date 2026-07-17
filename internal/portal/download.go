@@ -32,6 +32,31 @@ type ajaxCommand struct {
 	Command       string `json:"command"`
 	Location      string `json:"location"`
 	FetchLocation string `json:"fetchLocation"` // present on "fullPageReplace" commands
+
+	// DeltasToApply is present on "replacePortions" commands: a flat
+	// [id, html, id, html, ...] list (confirmed from live capture
+	// 2026-07-17) — only the html elements (odd indices) matter.
+	DeltasToApply []string `json:"deltasToApply"`
+}
+
+// replacePortionsHTML concatenates the HTML deltas from every
+// "replacePortions" command in an archive-filter response into one
+// unescaped string to regex over.
+func replacePortionsHTML(body string) (string, error) {
+	var resp ajaxResponse
+	if err := json.Unmarshal([]byte(body), &resp); err != nil {
+		return "", fmt.Errorf("parsing archive response: %w", err)
+	}
+	var sb strings.Builder
+	for _, cmd := range resp.Commands {
+		if cmd.Command != "replacePortions" {
+			continue
+		}
+		for i := 1; i < len(cmd.DeltasToApply); i += 2 {
+			sb.WriteString(cmd.DeltasToApply[i])
+		}
+	}
+	return sb.String(), nil
 }
 
 // fullPageReplaceLocation reports whether body is a "fullPageReplace"
