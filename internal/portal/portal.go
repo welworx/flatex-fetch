@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"math/rand/v2"
 	"mime/multipart"
@@ -411,6 +412,64 @@ func (c *Client) ListDocuments(from, to time.Time) ([]int, error) {
 		return nil, err
 	}
 	return rowIndices(body), nil
+}
+
+// Document is one archived document's metadata, as shown in the portal's
+// archive table. Index addresses the row within the same [from, to] window
+// Download expects.
+type Document struct {
+	Index    int
+	Name     string
+	Date     time.Time
+	Category string
+	Read     bool
+}
+
+// ListDocumentsDetailed returns every archived document's metadata in
+// [from, to] — name, date, category, and read status — for a list-only
+// view. Like ListDocuments, only the first page of results is returned
+// (see ListDocuments's doc comment).
+func (c *Client) ListDocumentsDetailed(from, to time.Time) ([]Document, error) {
+	body, err := c.filterArchive(from, to)
+	if err != nil {
+		return nil, err
+	}
+	rowsHTML, err := replacePortionsHTML(body)
+	if err != nil {
+		return nil, err
+	}
+	return parseDocuments(rowsHTML), nil
+}
+
+func parseDocuments(rowsHTML string) []Document {
+	starts := reDocRow.FindAllStringSubmatchIndex(rowsHTML, -1)
+	var docs []Document
+	for i, m := range starts {
+		rowEnd := len(rowsHTML)
+		if i+1 < len(starts) {
+			rowEnd = starts[i+1][0]
+		}
+		row := rowsHTML[m[0]:rowEnd]
+		class := rowsHTML[m[2]:m[3]]
+		idx, err := strconv.Atoi(rowsHTML[m[4]:m[5]])
+		if err != nil {
+			continue
+		}
+		doc := Document{Index: idx, Read: !strings.Contains(class, "Unread")}
+		if dm := reDocDate.FindStringSubmatch(row); dm != nil {
+			if t, err := time.Parse("02.01.2006", strings.TrimSpace(dm[1])); err == nil {
+				doc.Date = t
+			}
+		}
+		if cm := reDocCategory.FindStringSubmatch(row); cm != nil {
+			doc.Category = html.UnescapeString(strings.TrimSpace(cm[1]))
+		}
+		if nm := reDocName.FindStringSubmatch(row); nm != nil {
+			doc.Name = html.UnescapeString(strings.TrimSpace(nm[1]))
+		}
+		docs = append(docs, doc)
+	}
+	return docs
 }
 
 func rowIndices(body string) []int {

@@ -108,4 +108,17 @@ var (
 	// (names, dates) lives in the same response but is deliberately not
 	// parsed here.
 	reRowSelection = regexp.MustCompile(`rowSelectionSupport\[(\d+)\]`)
+
+	// reDocRow matches each document row's opening <tr> in the unescaped
+	// HTML from a "replacePortions" command's deltasToApply — confirmed
+	// shape from live capture 2026-07-17: id="TID<formInstance>_<rowIdx>-0";
+	// "Unread" appears in the class list only for unread documents (there is
+	// also a "Gelesen am"/read-date column, C5, but the class is simpler).
+	reDocRow = regexp.MustCompile(`<tr class="([^"]*)" id="TID\d+_(\d+)-\d+"`)
+
+	// reDocDate/reDocCategory/reDocName match the Datum/Dokumententyp/
+	// Beschreibung cells (C2/C3/C4) within a single row's HTML slice.
+	reDocDate     = regexp.MustCompile(`class="C2[^"]*"[^>]*>([^<]*)</td>`)
+	reDocCategory = regexp.MustCompile(`class="C3[^"]*"[^>]*><div class="Ellipsis">([^<]*)</div>`)
+	reDocName     = regexp.MustCompile(`class="C4[^"]*"[^>]*><div class="Ellipsis">([^<]*)</div>`)
 )

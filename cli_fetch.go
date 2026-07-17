@@ -12,6 +12,12 @@ import (
 	"github.com/welworx/flatex-fetch/internal/portal"
 )
 
+// profileFlagsValid reports whether exactly one of -profile/-all-profiles
+// was given.
+func profileFlagsValid(profileName string, allProfiles bool) bool {
+	return (profileName == "") != !allProfiles
+}
+
 // dateRange resolves the -days / -from / -to flag semantics. Explicit
 // from/to (both required together) overrides days.
 func dateRange(days int, from, to string, now time.Time) (time.Time, time.Time, error) {
@@ -35,6 +41,49 @@ func dateRange(days int, from, to string, now time.Time) (time.Time, time.Time, 
 	return f, t, nil
 }
 
+// resolveProfilesAndCreds selects the profile(s) named by -profile/
+// -all-profiles and decrypts stored credentials. Callers must validate the
+// -profile/-all-profiles xor themselves first (see profileFlagsValid) since
+// that's a usage error (exit 2), distinct from the runtime errors here
+// (exit 1). Shared by fetch and list, which both need exactly this before
+// talking to the portal.
+func resolveProfilesAndCreds(profileName string, allProfiles bool) ([]config.Profile, map[string]string, error) {
+	dir, err := config.Dir()
+	if err != nil {
+		return nil, nil, err
+	}
+	profiles, err := config.LoadProfiles(dir)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !allProfiles {
+		found := false
+		for _, p := range profiles {
+			if p.Name == profileName {
+				profiles = []config.Profile{p}
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, nil, fmt.Errorf("no profile %q (run: flatex-fetch profile add %s)", profileName, profileName)
+		}
+	}
+	if len(profiles) == 0 {
+		return nil, nil, errors.New("no profiles configured")
+	}
+
+	pass, err := readPassphrase(false)
+	if err != nil {
+		return nil, nil, err
+	}
+	creds, err := config.LoadCredentials(dir, pass)
+	if err != nil {
+		return nil, nil, err
+	}
+	return profiles, creds, nil
+}
+
 func runFetch(args []string) int {
 	fs := flag.NewFlagSet("fetch", flag.ContinueOnError)
 	profileName := fs.String("profile", "", "profile to fetch")
@@ -48,7 +97,7 @@ func runFetch(args []string) int {
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	if (*profileName == "") == !*allProfiles {
+	if !profileFlagsValid(*profileName, *allProfiles) {
 		fmt.Fprintln(os.Stderr, "error: exactly one of -profile or -all-profiles is required")
 		return 2
 	}
@@ -66,41 +115,7 @@ func runFetch(args []string) int {
 		*out = filepath.Join(home, "flatex-downloads")
 	}
 
-	dir, err := config.Dir()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
-		return 1
-	}
-	profiles, err := config.LoadProfiles(dir)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
-		return 1
-	}
-	if !*allProfiles {
-		found := false
-		for _, p := range profiles {
-			if p.Name == *profileName {
-				profiles = []config.Profile{p}
-				found = true
-				break
-			}
-		}
-		if !found {
-			fmt.Fprintf(os.Stderr, "error: no profile %q (run: flatex-fetch profile add %s)\n", *profileName, *profileName)
-			return 1
-		}
-	}
-	if len(profiles) == 0 {
-		fmt.Fprintln(os.Stderr, "error: no profiles configured")
-		return 1
-	}
-
-	pass, err := readPassphrase(false)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
-		return 1
-	}
-	creds, err := config.LoadCredentials(dir, pass)
+	profiles, creds, err := resolveProfilesAndCreds(*profileName, *allProfiles)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 1

@@ -1,6 +1,7 @@
 package portal
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -167,6 +168,72 @@ func TestListDocuments(t *testing.T) {
 	}
 	if len(filterCalls) != 1 || filterCalls[0] != "01.06.2026|10.06.2026" {
 		t.Fatalf("filter calls = %v, want one 01.06.2026|10.06.2026", filterCalls)
+	}
+}
+
+func TestListDocumentsDetailed(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/banking-flatex.at/"+headerAreaAction, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"commands":[{"command":"replacePortions"}]}`)
+	})
+	mux.HandleFunc("/banking-flatex.at/"+archiveListAction, func(w http.ResponseWriter, r *http.Request) {
+		// Shape confirmed from a live capture 2026-07-17: deltasToApply is a
+		// flat [id, html, id, html, ...] list; only the html elements (odd
+		// indices) matter. Read rows have no "Unread" class; unread rows do.
+		rowsHTML := `<table><tbody>` +
+			`<tr class="I0 First Even" id="TID1_0-0">` +
+			`<td class="C1 "><div class="Ellipsis">acct</div></td>` +
+			`<td class="C2 ">16.07.2026</td>` +
+			`<td class="C3 "><div class="Ellipsis">Hauptversammlung</div></td>` +
+			`<td class="C4 "><div class="Ellipsis">Einladung Hauptversammlung</div></td>` +
+			`<td class="C5 Last ">16.07.2026</td>` +
+			`</tr>` +
+			`<tr class="I0 First Unread Odd" id="TID1_1-0">` +
+			`<td class="C1 "><div class="Ellipsis">acct</div></td>` +
+			`<td class="C2 ">10.07.2026</td>` +
+			`<td class="C3 "><div class="Ellipsis">Kontoauszug</div></td>` +
+			`<td class="C4 "><div class="Ellipsis">Kontoauszug vom 10.07.2026</div></td>` +
+			`<td class="C5 Last ">-</td>` +
+			`</tr>` +
+			`</tbody></table>`
+		var resp struct {
+			Commands []struct {
+				Command       string   `json:"command"`
+				DeltasToApply []string `json:"deltasToApply"`
+			} `json:"commands"`
+		}
+		resp.Commands = []struct {
+			Command       string   `json:"command"`
+			DeltasToApply []string `json:"deltasToApply"`
+		}{{Command: "replacePortions", DeltasToApply: []string{"someId", rowsHTML}}}
+		b, _ := json.Marshal(resp)
+		w.Write(b)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := newTestClient(t, srv)
+	from := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 7, 17, 0, 0, 0, 0, time.UTC)
+	docs, err := c.ListDocumentsDetailed(from, to)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(docs) != 2 {
+		t.Fatalf("docs = %v, want 2", docs)
+	}
+	d0, d1 := docs[0], docs[1]
+	if d0.Index != 0 || d0.Name != "Einladung Hauptversammlung" || d0.Category != "Hauptversammlung" || !d0.Read {
+		t.Errorf("docs[0] = %+v, want index 0, read Hauptversammlung doc", d0)
+	}
+	if d0.Date.Format("2006-01-02") != "2026-07-16" {
+		t.Errorf("docs[0].Date = %v, want 2026-07-16", d0.Date)
+	}
+	if d1.Index != 1 || d1.Name != "Kontoauszug vom 10.07.2026" || d1.Category != "Kontoauszug" || d1.Read {
+		t.Errorf("docs[1] = %+v, want index 1, unread Kontoauszug doc", d1)
+	}
+	if d1.Date.Format("2006-01-02") != "2026-07-10" {
+		t.Errorf("docs[1].Date = %v, want 2026-07-10", d1.Date)
 	}
 }
 
