@@ -17,7 +17,7 @@ func TestProfileFlagsValid(t *testing.T) {
 		all  bool
 		want bool
 	}{
-		{"", false, false},
+		{"", false, true},
 		{"", true, true},
 		{"x", false, true},
 		{"x", true, false},
@@ -103,8 +103,15 @@ func TestRunListCSVAndJSONMutuallyExclusive(t *testing.T) {
 	}
 }
 
-func TestRunListRequiresProfileFlag(t *testing.T) {
-	if got := runList(nil); got != 2 {
-		t.Fatalf("runList() = %d, want 2", got)
+func TestRunListProfileAndAllProfilesMutuallyExclusive(t *testing.T) {
+	if got := runList([]string{"-profile", "x", "-all-profiles"}); got != 2 {
+		t.Fatalf("runList(-profile x -all-profiles) = %d, want 2", got)
+	}
+}
+
+func TestRunListDefaultsToFirstProfileWhenNoneConfigured(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	if got := runList(nil); got != 1 {
+		t.Fatalf("runList() = %d, want 1 (no profiles configured)", got)
 	}
 }

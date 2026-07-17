@@ -18,6 +18,29 @@ func TestReadPassphraseFromEnv(t *testing.T) {
 	}
 }
 
+func TestRunProfileAddFromEnv(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("FLATEX_FETCH_PASSPHRASE", "pp")
+	t.Setenv("FLATEX_FETCH_USERNAME", "alice")
+	t.Setenv("FLATEX_FETCH_PASSWORD", "pw1")
+
+	if got := runProfile([]string{"add", "main"}); got != 0 {
+		t.Fatalf("runProfile(add) = %d, want 0", got)
+	}
+	dir, err := config.Dir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ps, err := config.LoadProfiles(dir)
+	if err != nil || len(ps) != 1 || ps[0].Username != "alice" {
+		t.Fatalf("profiles = %+v, err = %v", ps, err)
+	}
+	creds, err := config.LoadCredentials(dir, []byte("pp"))
+	if err != nil || creds["main"] != "pw1" {
+		t.Fatalf("creds = %v, err = %v", creds, err)
+	}
+}
+
 func TestProfileAddRemoveRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("FLATEX_FETCH_PASSPHRASE", "pp")

@@ -128,17 +128,25 @@ func runProfile(args []string) int {
 		if len(args) >= 4 && args[2] == "-domain" {
 			domain = args[3]
 		}
-		username, err := promptLine("Username: ")
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "error:", err)
-			return 1
+		username := os.Getenv("FLATEX_FETCH_USERNAME")
+		if username == "" {
+			var err error
+			username, err = promptLine("Username: ")
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "error:", err)
+				return 1
+			}
 		}
-		pw, err := promptSecret("Portal password: ")
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "error:", err)
-			return 1
+		password := os.Getenv("FLATEX_FETCH_PASSWORD")
+		if password == "" {
+			pw, err := promptSecret("Portal password: ")
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "error:", err)
+				return 1
+			}
+			password = string(pw)
 		}
-		if err := profileAdd(dir, name, domain, username, string(pw)); err != nil {
+		if err := profileAdd(dir, name, domain, username, password); err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			return 1
 		}
