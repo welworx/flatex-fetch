@@ -1,0 +1,29 @@
+name: Release
+on:
+  push:
+    tags: [ 'v*' ]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build matrix
+        run: |
+          mkdir dist
+          for os in darwin linux windows; do
+            for arch in amd64 arm64; do
+              ext=""; [ "$os" = "windows" ] && ext=".exe"
+              GOOS=$os GOARCH=$arch go build \
+                -ldflags "-X main.version=${GITHUB_REF_NAME}" \
+                -o "dist/flatex-fetch-${os}-${arch}${ext}"
+            done
+          done
+          (cd dist && sha256sum * > SHA256SUMS.txt)
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: dist/*

@@ -1,0 +1,31 @@
+# Binaries
+flatex-fetch
+flatex-fetch-test
+*.o
+*.a
+*.so
+
+# macOS
+.DS_Store
+
+# Output files
+*.json
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testing
+*.test
+*.out
+
+# Go
+/vendor/
+
+# Superpowers scratch and planning docs — local working notes, not part of
+# the published repo.
+.superpowers/
+docs/superpowers/
