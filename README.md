@@ -41,15 +41,20 @@ or grab a release binary (darwin/linux/windows, amd64/arm64).
 Prompts for your portal username and password. The password is stored in
 `~/.config/flatex-fetch/credentials.enc`, encrypted (argon2id + AES-256-GCM)
 with a master passphrase you set on first use. For cron/scripting, provide
-the passphrase via the `FLATEX_FETCH_PASSPHRASE` environment variable.
+the passphrase via the `FLATEX_FETCH_PASSPHRASE` environment variable, and
+the portal username/password via `FLATEX_FETCH_USERNAME`/
+`FLATEX_FETCH_PASSWORD` to skip the interactive prompts.
 
 ## Usage
 
-    flatex-fetch fetch -profile main                 # new docs, last 90 days
+    flatex-fetch fetch                                # first configured profile, last 7 days
     flatex-fetch fetch -profile main -days 10
     flatex-fetch fetch -profile main -from 2026-01-01 -to 2026-06-30
     flatex-fetch fetch -profile main -all -days 365  # re-download existing too
     flatex-fetch fetch -all-profiles
+
+`-profile` defaults to the first configured profile; use `-all-profiles` to
+fetch every profile instead.
 
 PDFs land in `~/flatex-downloads/<profile>/` (`-out` overrides), named by
 the portal's own filename. Already-downloaded files are skipped unless

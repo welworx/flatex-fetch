@@ -3,7 +3,33 @@ package main
 import (
 	"testing"
 	"time"
+
+	"github.com/welworx/flatex-fetch/internal/config"
 )
+
+func TestResolveProfilesAndCredsDefaultsToFirstProfile(t *testing.T) {
+	isolateConfigDir(t)
+	t.Setenv("FLATEX_FETCH_PASSPHRASE", "pp")
+
+	cfgDir, err := config.Dir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := profileAdd(cfgDir, "a", "flatex.at", "alice", "pw-a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := profileAdd(cfgDir, "b", "flatex.at", "bob", "pw-b"); err != nil {
+		t.Fatal(err)
+	}
+
+	profiles, _, err := resolveProfilesAndCreds("", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(profiles) != 1 || profiles[0].Name != "a" {
+		t.Fatalf("profiles = %+v, want first profile \"a\"", profiles)
+	}
+}
 
 func TestDateRange(t *testing.T) {
 	now := time.Date(2026, 7, 16, 12, 0, 0, 0, time.UTC)

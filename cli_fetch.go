@@ -12,10 +12,11 @@ import (
 	"github.com/welworx/flatex-fetch/internal/portal"
 )
 
-// profileFlagsValid reports whether exactly one of -profile/-all-profiles
-// was given.
+// profileFlagsValid reports whether -profile and -all-profiles aren't both
+// given. Neither given is valid: it means "use the first configured
+// profile".
 func profileFlagsValid(profileName string, allProfiles bool) bool {
-	return (profileName == "") != !allProfiles
+	return profileName == "" || !allProfiles
 }
 
 // dateRange resolves the -days / -from / -to flag semantics. Explicit
@@ -42,11 +43,11 @@ func dateRange(days int, from, to string, now time.Time) (time.Time, time.Time, 
 }
 
 // resolveProfilesAndCreds selects the profile(s) named by -profile/
-// -all-profiles and decrypts stored credentials. Callers must validate the
-// -profile/-all-profiles xor themselves first (see profileFlagsValid) since
-// that's a usage error (exit 2), distinct from the runtime errors here
-// (exit 1). Shared by fetch and list, which both need exactly this before
-// talking to the portal.
+// -all-profiles and decrypts stored credentials. Callers must validate
+// -profile/-all-profiles aren't both set themselves first (see
+// profileFlagsValid) since that's a usage error (exit 2), distinct from the
+// runtime errors here (exit 1). Shared by fetch and list, which both need
+// exactly this before talking to the portal.
 func resolveProfilesAndCreds(profileName string, allProfiles bool) ([]config.Profile, map[string]string, error) {
 	dir, err := config.Dir()
 	if err != nil {
@@ -56,7 +57,13 @@ func resolveProfilesAndCreds(profileName string, allProfiles bool) ([]config.Pro
 	if err != nil {
 		return nil, nil, err
 	}
-	if !allProfiles {
+	if len(profiles) == 0 {
+		return nil, nil, errors.New("no profiles configured (run: flatex-fetch profile add <name>)")
+	}
+	switch {
+	case allProfiles:
+		// use every profile
+	case profileName != "":
 		found := false
 		for _, p := range profiles {
 			if p.Name == profileName {
@@ -68,9 +75,8 @@ func resolveProfilesAndCreds(profileName string, allProfiles bool) ([]config.Pro
 		if !found {
 			return nil, nil, fmt.Errorf("no profile %q (run: flatex-fetch profile add %s)", profileName, profileName)
 		}
-	}
-	if len(profiles) == 0 {
-		return nil, nil, errors.New("no profiles configured")
+	default:
+		profiles = []config.Profile{profiles[0]}
 	}
 
 	pass, err := readPassphrase(false)
@@ -86,11 +92,11 @@ func resolveProfilesAndCreds(profileName string, allProfiles bool) ([]config.Pro
 
 func runFetch(args []string) int {
 	fs := flag.NewFlagSet("fetch", flag.ContinueOnError)
-	profileName := fs.String("profile", "", "profile to fetch")
+	profileName := fs.String("profile", "", "profile to fetch (default: first configured profile)")
 	allProfiles := fs.Bool("all-profiles", false, "fetch every configured profile")
 	out := fs.String("out", "", "output directory (default ~/flatex-downloads)")
 	userAgent := fs.String("user-agent", "", "override the built-in browser User-Agent")
-	days := fs.Int("days", 90, "fetch documents from the last N days")
+	days := fs.Int("days", 7, "fetch documents from the last N days")
 	fromFlag := fs.String("from", "", "start date YYYY-MM-DD (with -to; overrides -days)")
 	toFlag := fs.String("to", "", "end date YYYY-MM-DD (with -from)")
 	all := fs.Bool("all", false, "re-download documents that already exist locally")
@@ -98,7 +104,7 @@ func runFetch(args []string) int {
 		return 2
 	}
 	if !profileFlagsValid(*profileName, *allProfiles) {
-		fmt.Fprintln(os.Stderr, "error: exactly one of -profile or -all-profiles is required")
+		fmt.Fprintln(os.Stderr, "error: -profile and -all-profiles are mutually exclusive")
 		return 2
 	}
 	from, to, err := dateRange(*days, *fromFlag, *toFlag, time.Now())

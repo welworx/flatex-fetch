@@ -16,10 +16,10 @@ import (
 
 func runList(args []string) int {
 	fs := flag.NewFlagSet("list", flag.ContinueOnError)
-	profileName := fs.String("profile", "", "profile to list")
+	profileName := fs.String("profile", "", "profile to list (default: first configured profile)")
 	allProfiles := fs.Bool("all-profiles", false, "list every configured profile")
 	userAgent := fs.String("user-agent", "", "override the built-in browser User-Agent")
-	days := fs.Int("days", 90, "list documents from the last N days")
+	days := fs.Int("days", 7, "list documents from the last N days")
 	fromFlag := fs.String("from", "", "start date YYYY-MM-DD (with -to; overrides -days)")
 	toFlag := fs.String("to", "", "end date YYYY-MM-DD (with -from)")
 	csvOut := fs.Bool("csv", false, "output CSV instead of a table")
@@ -28,7 +28,7 @@ func runList(args []string) int {
 		return 2
 	}
 	if !profileFlagsValid(*profileName, *allProfiles) {
-		fmt.Fprintln(os.Stderr, "error: exactly one of -profile or -all-profiles is required")
+		fmt.Fprintln(os.Stderr, "error: -profile and -all-profiles are mutually exclusive")
 		return 2
 	}
 	if *csvOut && *jsonOut {
