@@ -17,5 +17,10 @@ jobs:
       - uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12.2
-      - run: go test -v -race ./...
+      - run: go test -v -race -coverprofile=coverage.out ./...
       - run: go build -o flatex-fetch
+      - name: Upload coverage to Coveralls
+        uses: coverallsapp/github-action@v2
+        with:
+          file: coverage.out
+          format: golang

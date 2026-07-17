@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/welworx/flatex-fetch/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/welworx/flatex-fetch/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/welworx/flatex-fetch/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/welworx/flatex-fetch/actions/workflows/codeql.yml)
+[![Coverage Status](https://coveralls.io/repos/github/welworx/flatex-fetch/badge.svg?branch=main)](https://coveralls.io/github/welworx/flatex-fetch?branch=main)
 [![Release](https://img.shields.io/github/v/release/welworx/flatex-fetch)](https://github.com/welworx/flatex-fetch/releases/latest)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/welworx/flatex-fetch)](go.mod)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
