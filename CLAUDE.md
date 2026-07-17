@@ -24,7 +24,7 @@ first page of archive results is fetched — pagination via the portal's
 Tag `v*` → `.github/workflows/release.yml` builds darwin/linux/windows ×
 amd64/arm64 and attaches binaries to the GitHub release.
 
-## Gotchas
+## Notes
 
 - CLI flags/env vars/behavior are documented in two places: `main.go`'s
   `-help` text (canonical) and `README.md` (Usage/Setup/ENVIRONMENT). Update
