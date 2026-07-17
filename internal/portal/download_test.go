@@ -18,6 +18,12 @@ var testWindow = struct{ from, to time.Time }{
 	to:   time.Date(2026, 6, 10, 0, 0, 0, 0, time.UTC),
 }
 
+// flatResolvePath reproduces the pre-templating behavior: every document
+// lands directly in dir under its resolved name.
+func flatResolvePath(dir string) ResolvePath {
+	return func(name string) (string, string) { return dir, name }
+}
+
 // downloadServer serves the two-step archive-download flow: the archive
 // endpoint returns a "download" command pointing at a location, and that
 // location serves the actual file content (pdf or zip, chosen by loc).
@@ -70,7 +76,7 @@ func TestDownloadSinglePDF(t *testing.T) {
 	c := newTestClient(t, srv)
 	dir := t.TempDir()
 
-	p, skipped, err := c.Download(testWindow.from, testWindow.to, 0, dir, map[string]bool{}, false)
+	p, skipped, err := c.Download(testWindow.from, testWindow.to, 0, flatResolvePath(dir), map[string]bool{}, false)
 	if err != nil || skipped {
 		t.Fatalf("err=%v skipped=%v", err, skipped)
 	}
@@ -107,7 +113,7 @@ func TestDownloadZipBundle(t *testing.T) {
 	c := newTestClient(t, srv)
 	dir := t.TempDir()
 
-	p, skipped, err := c.Download(testWindow.from, testWindow.to, 0, dir, map[string]bool{}, false)
+	p, skipped, err := c.Download(testWindow.from, testWindow.to, 0, flatResolvePath(dir), map[string]bool{}, false)
 	if err != nil || skipped {
 		t.Fatalf("err=%v skipped=%v", err, skipped)
 	}
@@ -146,7 +152,7 @@ func TestDownloadZipWithMultipleEntriesErrors(t *testing.T) {
 	c := newTestClient(t, srv)
 	dir := t.TempDir()
 
-	_, _, err := c.Download(testWindow.from, testWindow.to, 0, dir, map[string]bool{}, false)
+	_, _, err := c.Download(testWindow.from, testWindow.to, 0, flatResolvePath(dir), map[string]bool{}, false)
 	if err == nil {
 		t.Fatal("expected error for unexpected multi-entry zip")
 	}
@@ -166,17 +172,17 @@ func TestDownloadDedupAndCollision(t *testing.T) {
 	// First run: downloads row 0 (resolves to a hash-stem name, since no
 	// Content-Disposition/query filename/pdf-suffixed path is present).
 	seen := map[string]bool{}
-	p1, skipped, err := c.Download(testWindow.from, testWindow.to, 0, dir, seen, false)
+	p1, skipped, err := c.Download(testWindow.from, testWindow.to, 0, flatResolvePath(dir), seen, false)
 	if err != nil || skipped {
 		t.Fatalf("first: err=%v skipped=%v", err, skipped)
 	}
 
 	// New run (fresh seen): existing file → dedup skip.
-	if _, skipped, _ := c.Download(testWindow.from, testWindow.to, 0, dir, map[string]bool{}, false); !skipped {
+	if _, skipped, _ := c.Download(testWindow.from, testWindow.to, 0, flatResolvePath(dir), map[string]bool{}, false); !skipped {
 		t.Fatal("re-run should skip existing file")
 	}
 	// New run with overwrite: downloads again to the same path.
-	p2, skipped, err := c.Download(testWindow.from, testWindow.to, 0, dir, map[string]bool{}, true)
+	p2, skipped, err := c.Download(testWindow.from, testWindow.to, 0, flatResolvePath(dir), map[string]bool{}, true)
 	if err != nil || skipped {
 		t.Fatalf("overwrite: err=%v skipped=%v", err, skipped)
 	}
@@ -203,7 +209,7 @@ func TestDownloadDetectsChallenge(t *testing.T) {
 
 	c := newTestClient(t, srv)
 	dir := t.TempDir()
-	_, _, err := c.Download(testWindow.from, testWindow.to, 0, dir, map[string]bool{}, false)
+	_, _, err := c.Download(testWindow.from, testWindow.to, 0, flatResolvePath(dir), map[string]bool{}, false)
 	if err == nil || !errors.Is(err, ErrChallenged) {
 		t.Fatalf("err = %v, want ErrChallenged", err)
 	}
@@ -226,7 +232,7 @@ func TestDownloadNoDownloadInResponse(t *testing.T) {
 
 	c := newTestClient(t, srv)
 	dir := t.TempDir()
-	_, _, err := c.Download(testWindow.from, testWindow.to, 0, dir, map[string]bool{}, false)
+	_, _, err := c.Download(testWindow.from, testWindow.to, 0, flatResolvePath(dir), map[string]bool{}, false)
 	if err == nil {
 		t.Fatal("expected error when response has no download command")
 	}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/welworx/flatex-fetch/internal/config"
@@ -95,6 +96,7 @@ func runFetch(args []string) int {
 	profileName := fs.String("profile", "", "profile to fetch (default: first configured profile)")
 	allProfiles := fs.Bool("all-profiles", false, "fetch every configured profile")
 	out := fs.String("out", "", "output directory (default ~/flatex-downloads)")
+	format := fs.String("format", "", `output path template relative to -out, e.g. "<type>/<date YYYY-MM-DD>/<filename>.pdf" (default: <profile>/<filename>, the portal's own name)`)
 	userAgent := fs.String("user-agent", "", "override the built-in browser User-Agent")
 	days := fs.Int("days", 7, "fetch documents from the last N days")
 	fromFlag := fs.String("from", "", "start date YYYY-MM-DD (with -to; overrides -days)")
@@ -106,6 +108,12 @@ func runFetch(args []string) int {
 	if !profileFlagsValid(*profileName, *allProfiles) {
 		fmt.Fprintln(os.Stderr, "error: -profile and -all-profiles are mutually exclusive")
 		return 2
+	}
+	if *format != "" {
+		if err := validatePathTemplate(*format); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			return 2
+		}
 	}
 	from, to, err := dateRange(*days, *fromFlag, *toFlag, time.Now())
 	if err != nil {
@@ -129,7 +137,7 @@ func runFetch(args []string) int {
 
 	failed := false
 	for _, p := range profiles {
-		if err := fetchProfile(p, creds[p.Name], *out, *userAgent, from, to, *all); err != nil {
+		if err := fetchProfile(p, creds[p.Name], *out, *format, *userAgent, from, to, *all); err != nil {
 			fmt.Fprintf(os.Stderr, "profile %s: %v\n", p.Name, err)
 			failed = true
 		}
@@ -140,10 +148,26 @@ func runFetch(args []string) int {
 	return 0
 }
 
+// documentPathResolver builds the portal.ResolvePath used for one
+// document's download. With no -format, it reproduces the historical
+// layout: out/profile/<portal filename>. With -format, the template is
+// rendered using the document's profile/type/date plus its resolved
+// filename (extension stripped, since templates supply their own).
+func documentPathResolver(out, format, profile string, d portal.Document) portal.ResolvePath {
+	return func(origName string) (string, string) {
+		if format == "" {
+			return filepath.Join(out, profile), origName
+		}
+		stem := strings.TrimSuffix(origName, filepath.Ext(origName))
+		dir, name := renderPathTemplate(format, profile, d.Category, d.Date, stem)
+		return filepath.Join(out, dir), name
+	}
+}
+
 // fetchProfile logs in and downloads one profile's documents. A single
 // failed document is logged and skipped; only login/listing failures abort
 // the profile.
-func fetchProfile(p config.Profile, password, out, userAgent string, from, to time.Time, overwrite bool) error {
+func fetchProfile(p config.Profile, password, out, format, userAgent string, from, to time.Time, overwrite bool) error {
 	if password == "" {
 		return errors.New("no stored password (re-add the profile)")
 	}
@@ -154,21 +178,21 @@ func fetchProfile(p config.Profile, password, out, userAgent string, from, to ti
 	if err := c.Login(p.Username, password); err != nil {
 		return err
 	}
-	rows, err := c.ListDocuments(from, to)
+	docs, err := c.ListDocumentsDetailed(from, to)
 	if err != nil {
 		return err
 	}
-	destDir := filepath.Join(out, p.Name)
 	seen := map[string]bool{}
 	downloaded, skipped, failedDocs := 0, 0, 0
-	for _, idx := range rows {
-		path, wasSkipped, err := c.Download(from, to, idx, destDir, seen, overwrite)
+	for _, d := range docs {
+		resolvePath := documentPathResolver(out, format, p.Name, d)
+		path, wasSkipped, err := c.Download(from, to, d.Index, resolvePath, seen, overwrite)
 		switch {
 		case errors.Is(err, portal.ErrChallenged):
-			fmt.Fprintf(os.Stderr, "profile %s: row %d: blocked by bot-check challenge\n", p.Name, idx)
+			fmt.Fprintf(os.Stderr, "profile %s: row %d: blocked by bot-check challenge\n", p.Name, d.Index)
 			failedDocs++
 		case err != nil:
-			fmt.Fprintf(os.Stderr, "profile %s: row %d: %v\n", p.Name, idx, err)
+			fmt.Fprintf(os.Stderr, "profile %s: row %d: %v\n", p.Name, d.Index, err)
 			failedDocs++
 		case wasSkipped:
 			skipped++

@@ -81,16 +81,17 @@ func listProfile(p config.Profile, password, userAgent string, from, to time.Tim
 	}
 	switch {
 	case jsonOut:
-		return writeDocumentsJSON(os.Stdout, docs)
+		return writeDocumentsJSON(os.Stdout, docs, p.Name)
 	case csvOut:
-		return writeDocumentsCSV(os.Stdout, docs)
+		return writeDocumentsCSV(os.Stdout, docs, p.Name)
 	default:
-		writeDocumentsTable(os.Stdout, docs)
+		writeDocumentsTable(os.Stdout, docs, p.Name)
 		return nil
 	}
 }
 
 type documentRow struct {
+	Profile  string `json:"profile"`
 	Index    int    `json:"index"`
 	Name     string `json:"name"`
 	Date     string `json:"date"`
@@ -98,10 +99,13 @@ type documentRow struct {
 	Read     bool   `json:"read"`
 }
 
-func toDocumentRows(docs []portal.Document) []documentRow {
+// toDocumentRows attaches profile so CSV/JSON output stays unambiguous when
+// -all-profiles combines multiple profiles' documents into one stream.
+func toDocumentRows(docs []portal.Document, profile string) []documentRow {
 	rows := make([]documentRow, len(docs))
 	for i, d := range docs {
 		rows[i] = documentRow{
+			Profile:  profile,
 			Index:    d.Index,
 			Name:     d.Name,
 			Date:     d.Date.Format("2006-01-02"),
@@ -112,23 +116,23 @@ func toDocumentRows(docs []portal.Document) []documentRow {
 	return rows
 }
 
-func writeDocumentsTable(w *os.File, docs []portal.Document) {
+func writeDocumentsTable(w *os.File, docs []portal.Document, profile string) {
 	tw := tabwriter.NewWriter(w, 0, 2, 2, ' ', 0)
-	fmt.Fprintln(tw, "INDEX\tDATE\tCATEGORY\tREAD\tNAME")
-	for _, d := range toDocumentRows(docs) {
-		fmt.Fprintf(tw, "%d\t%s\t%s\t%t\t%s\n", d.Index, d.Date, d.Category, d.Read, d.Name)
+	fmt.Fprintln(tw, "PROFILE\tINDEX\tDATE\tCATEGORY\tREAD\tNAME")
+	for _, d := range toDocumentRows(docs, profile) {
+		fmt.Fprintf(tw, "%s\t%d\t%s\t%s\t%t\t%s\n", d.Profile, d.Index, d.Date, d.Category, d.Read, d.Name)
 	}
 	tw.Flush()
 }
 
-func writeDocumentsCSV(w *os.File, docs []portal.Document) error {
+func writeDocumentsCSV(w *os.File, docs []portal.Document, profile string) error {
 	cw := csv.NewWriter(w)
-	if err := cw.Write([]string{"index", "date", "category", "read", "name"}); err != nil {
+	if err := cw.Write([]string{"profile", "index", "date", "category", "read", "name"}); err != nil {
 		return err
 	}
-	for _, d := range toDocumentRows(docs) {
+	for _, d := range toDocumentRows(docs, profile) {
 		if err := cw.Write([]string{
-			fmt.Sprint(d.Index), d.Date, d.Category, fmt.Sprint(d.Read), d.Name,
+			d.Profile, fmt.Sprint(d.Index), d.Date, d.Category, fmt.Sprint(d.Read), d.Name,
 		}); err != nil {
 			return err
 		}
@@ -137,8 +141,8 @@ func writeDocumentsCSV(w *os.File, docs []portal.Document) error {
 	return cw.Error()
 }
 
-func writeDocumentsJSON(w *os.File, docs []portal.Document) error {
+func writeDocumentsJSON(w *os.File, docs []portal.Document, profile string) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
-	return enc.Encode(toDocumentRows(docs))
+	return enc.Encode(toDocumentRows(docs, profile))
 }

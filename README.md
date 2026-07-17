@@ -27,6 +27,9 @@ those PDFs into structured JSON — this tool only fetches.
 - **Incremental by default**: already-downloaded documents are skipped;
   `-all` re-downloads everything in range
 - **Flexible date ranges**: `-days`, or explicit `-from`/`-to`
+- **Configurable output paths**: `-format` templates the download path per
+  document (profile, category, date, filename), instead of the fixed
+  `<profile>/<filename>` layout
 
 ## Install
 
@@ -53,14 +56,47 @@ the portal username/password via `FLATEX_FETCH_USERNAME`/
     flatex-fetch fetch -profile main -all -days 365  # re-download existing too
     flatex-fetch fetch -all-profiles
 
+    # list without downloading, as a table, CSV, or JSON
+    flatex-fetch list -profile main
+    flatex-fetch list -all-profiles -csv
+    flatex-fetch list -all-profiles -json
+
 `-profile` defaults to the first configured profile; use `-all-profiles` to
-fetch every profile instead.
+fetch (or list) every profile instead. When multiple profiles are processed,
+`list`'s table gets a `PROFILE` column and its CSV/JSON rows get a
+`profile` field, so output from `-all-profiles` stays attributable per row.
 
 PDFs land in `~/flatex-downloads/<profile>/` (`-out` overrides), named by
 the portal's own filename. Already-downloaded files are skipped unless
 `-all` is set. Exit status is non-zero if any profile or document failed.
 
 `-user-agent` overrides the built-in browser User-Agent string.
+
+### Output path templates
+
+`-format` replaces the fixed `<profile>/<filename>` layout with a template,
+still rooted at `-out`. Placeholders are substituted per document and split
+on `/` into directories:
+
+| Token | Value |
+|---|---|
+| `<profile>` | profile name |
+| `<type>` | document category, as shown by `list` |
+| `<filename>` (or `<original filename>`, `<org filename>`) | portal's original filename, extension stripped |
+| `<date>` | document date, `YYYY-MM-DD` |
+| `<date LAYOUT>` | document date with `LAYOUT` built from `YYYY`/`MM`/`DD` |
+
+```
+flatex-fetch fetch -format "<type>/<date YYYY-MM-DD>/<filename>.pdf"
+# -> flatex-downloads/Kontoauszug/2026-07-16/invoice.pdf
+
+flatex-fetch fetch -format "<profile>/<date YYYY>/<date>-<type>-<filename>.pdf"
+# -> flatex-downloads/main/2026/2026-07-16-Kontoauszug-invoice.pdf
+```
+
+An unrecognized `<token>` is rejected before login. Incremental skip
+(`-all` off) still applies — since category/date are stable per document,
+the rendered path is the same across runs.
 
 ## Known Limitations
 

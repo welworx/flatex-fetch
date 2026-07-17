@@ -91,17 +91,24 @@ func downloadLocation(body string) (string, error) {
 	return "", errors.New("no download in response (document not found or already removed?)")
 }
 
+// ResolvePath computes a document's final destination directory and
+// filename from its resolved original filename (as reported by the
+// portal — a bare PDF's Content-Disposition/URL, or a zip entry's own
+// name). It lets callers defer output-path decisions (e.g. a -format
+// template) until that name is known.
+type ResolvePath func(origName string) (dir, name string)
+
 // Download selects row idx within [from, to]'s filtered window, triggers
-// the portal's download response, and writes the resulting file to
-// destDir using its resolved filename. Confirmed live against a real
-// account: a lone selected row comes back as a single PDF with its real
-// portal filename; 2+ rows come back as a zip bundle, which Download
-// unzips.
+// the portal's download response, and writes the resulting file at the
+// path resolvePath computes from its resolved filename. Confirmed live
+// against a real account: a lone selected row comes back as a single PDF
+// with its real portal filename; 2+ rows come back as a zip bundle, which
+// Download unzips.
 //
-// seen tracks names written earlier in this run (within-run collisions get
+// seen tracks paths written earlier in this run (within-run collisions get
 // _2/_3 suffixes). A file that already exists across runs is skipped
 // unless overwrite is set — that skip IS the dedup (see design spec).
-func (c *Client) Download(from, to time.Time, idx int, destDir string, seen map[string]bool, overwrite bool) (string, bool, error) {
+func (c *Client) Download(from, to time.Time, idx int, resolvePath ResolvePath, seen map[string]bool, overwrite bool) (string, bool, error) {
 	if err := c.ensureArchivePage(); err != nil {
 		return "", false, err
 	}
@@ -117,13 +124,14 @@ func (c *Client) Download(from, to time.Time, idx int, destDir string, seen map[
 	if err != nil {
 		return "", false, fmt.Errorf("download row %d: %w", idx, err)
 	}
-	return c.fetchLocation(loc, destDir, seen, overwrite)
+	return c.fetchLocation(loc, resolvePath, seen, overwrite)
 }
 
 // fetchLocation GETs a download location returned by the archive endpoint
-// and writes the resulting document(s) to destDir — a bare PDF or a zip
-// bundle, depending on how many documents the portal packaged.
-func (c *Client) fetchLocation(loc, destDir string, seen map[string]bool, overwrite bool) (string, bool, error) {
+// and writes the resulting document(s) at the path resolvePath computes —
+// a bare PDF or a zip bundle, depending on how many documents the portal
+// packaged.
+func (c *Client) fetchLocation(loc string, resolvePath ResolvePath, seen map[string]bool, overwrite bool) (string, bool, error) {
 	u := loc
 	if strings.HasPrefix(u, "/") {
 		u = c.baseURL + u
@@ -156,13 +164,13 @@ func (c *Client) fetchLocation(loc, destDir string, seen map[string]bool, overwr
 	}
 
 	if strings.HasPrefix(string(head), "PK") {
-		return writeZipEntry(body, destDir, seen, overwrite, loc)
+		return writeZipEntry(body, resolvePath, seen, overwrite, loc)
 	}
 	if !strings.HasPrefix(string(head), "%PDF") {
 		return "", false, fmt.Errorf("%s: response is not a PDF or zip (content-type %s)", loc, resp.Header.Get("Content-Type"))
 	}
 	name := resolveFilename(resp, u)
-	return writeFile(name, body, destDir, seen, overwrite)
+	return writeFile(name, body, resolvePath, seen, overwrite)
 }
 
 func isChallenge(resp *http.Response, head []byte) bool {
@@ -173,7 +181,7 @@ func isChallenge(resp *http.Response, head []byte) bool {
 // writeZipEntry unpacks a single-document zip bundle. More than one entry
 // is unexpected for a one-row download and is treated as an error rather
 // than silently dropping data.
-func writeZipEntry(body []byte, destDir string, seen map[string]bool, overwrite bool, loc string) (string, bool, error) {
+func writeZipEntry(body []byte, resolvePath ResolvePath, seen map[string]bool, overwrite bool, loc string) (string, bool, error) {
 	zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
 	if err != nil {
 		return "", false, fmt.Errorf("%s: reading zip: %w", loc, err)
@@ -198,7 +206,7 @@ func writeZipEntry(body []byte, destDir string, seen map[string]bool, overwrite 
 	if name == "" {
 		name = "doc-" + hashStem(loc) + ".pdf"
 	}
-	return writeFile(name, content, destDir, seen, overwrite)
+	return writeFile(name, content, resolvePath, seen, overwrite)
 }
 
 // resolveFilename picks a filename by priority: Content-Disposition header,
@@ -255,32 +263,33 @@ func fileExists(p string) bool {
 	return err == nil
 }
 
-// writeFile resolves within-run/cross-run dedup for name and, if not
-// skipped, writes content to destDir 0700/0600 — same posture as the
-// credentials store, since these are financial documents.
-func writeFile(name string, content []byte, destDir string, seen map[string]bool, overwrite bool) (string, bool, error) {
-	exists := fileExists(filepath.Join(destDir, name))
+// writeFile resolves resolvePath's (dir, name) for the given original
+// name, then resolves within-run/cross-run dedup on that full path and, if
+// not skipped, writes content 0700/0600 — same posture as the credentials
+// store, since these are financial documents.
+func writeFile(name string, content []byte, resolvePath ResolvePath, seen map[string]bool, overwrite bool) (string, bool, error) {
+	destDir, name := resolvePath(name)
+	dest := filepath.Join(destDir, name)
 	switch {
-	case seen[name]:
+	case seen[dest]:
 		for i := 2; ; i++ {
-			cand := suffixed(name, i)
-			if !seen[cand] && !fileExists(filepath.Join(destDir, cand)) {
-				name = cand
+			cand := filepath.Join(destDir, suffixed(name, i))
+			if !seen[cand] && !fileExists(cand) {
+				dest = cand
 				break
 			}
 		}
-	case exists && !overwrite:
-		return filepath.Join(destDir, name), true, nil
+	case fileExists(dest) && !overwrite:
+		return dest, true, nil
 	}
 
 	if err := os.MkdirAll(destDir, 0o700); err != nil {
 		return "", false, err
 	}
-	dest := filepath.Join(destDir, name)
 	if err := os.WriteFile(dest, content, 0o600); err != nil {
 		os.Remove(dest)
 		return "", false, err
 	}
-	seen[name] = true
+	seen[dest] = true
 	return dest, false, nil
 }
