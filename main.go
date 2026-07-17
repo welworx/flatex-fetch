@@ -75,8 +75,13 @@ FORMAT TEMPLATE
 
 ENVIRONMENT
   FLATEX_FETCH_PASSPHRASE   credentials.enc master passphrase (skip the prompt)
-  FLATEX_FETCH_USERNAME     portal username for 'profile add' (skip the prompt)
-  FLATEX_FETCH_PASSWORD     portal password for 'profile add' (skip the prompt)
+  FLATEX_FETCH_USERNAME     portal username for 'profile add' (skip the prompt);
+                            for fetch/list, set with FLATEX_FETCH_PASSWORD to
+                            skip profiles.json entirely (-profile/-all-profiles
+                            are ignored) and log in as "from-env" instead
+  FLATEX_FETCH_PASSWORD     portal password, see FLATEX_FETCH_USERNAME above
+  FLATEX_FETCH_DOMAIN       portal domain for the FLATEX_FETCH_USERNAME/PASSWORD
+                            login (default flatex.at)
 
 FILES
   ~/.config/flatex-fetch/profiles.json      profile names, usernames, domains
@@ -104,6 +109,9 @@ EXAMPLES
   # non-interactive setup for cron/CI
   FLATEX_FETCH_PASSPHRASE=... FLATEX_FETCH_USERNAME=... FLATEX_FETCH_PASSWORD=... \
     flatex-fetch profile add main
+
+  # fetch without a stored profile at all
+  FLATEX_FETCH_USERNAME=... FLATEX_FETCH_PASSWORD=... flatex-fetch fetch
 `)
 	return 0
 }
