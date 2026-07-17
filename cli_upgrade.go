@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // githubAPIBase is the GitHub API root; tests point this at an httptest
@@ -20,6 +21,8 @@ import (
 var githubAPIBase = "https://api.github.com"
 
 const githubRepo = "welworx/flatex-fetch"
+
+var upgradeHTTPClient = &http.Client{Timeout: 60 * time.Second}
 
 type ghAsset struct {
 	Name               string `json:"name"`
@@ -40,15 +43,19 @@ func runUpgrade(args []string) int {
 		return 2
 	}
 
-	target, err := os.Executable()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
-		return 1
-	}
-	target, err = filepath.EvalSymlinks(target)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
-		return 1
+	var target string
+	if !*check {
+		t, err := os.Executable()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			return 1
+		}
+		t, err = filepath.EvalSymlinks(t)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			return 1
+		}
+		target = t
 	}
 
 	return doUpgrade(*check, *yes, target, version)
@@ -140,7 +147,7 @@ func doUpgrade(check, yes bool, target, currentVersion string) int {
 }
 
 func fetchLatestRelease() (*ghRelease, error) {
-	resp, err := http.Get(githubAPIBase + "/repos/" + githubRepo + "/releases/latest")
+	resp, err := upgradeHTTPClient.Get(githubAPIBase + "/repos/" + githubRepo + "/releases/latest")
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +163,7 @@ func fetchLatestRelease() (*ghRelease, error) {
 }
 
 func downloadBytes(url string) ([]byte, error) {
-	resp, err := http.Get(url)
+	resp, err := upgradeHTTPClient.Get(url)
 	if err != nil {
 		return nil, err
 	}
