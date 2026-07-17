@@ -31,6 +31,12 @@ Logs into flatex.at and fetches documents (trade confirmations, dividend
 notices, ...) as raw PDFs, or lists them without downloading. Supports
 several portal logins ("profiles") in one run.
 
+DISCLAIMER
+  Personal, educational use only. Unofficial, not affiliated with flatex.
+  Drives flatex's web portal like a browser would, which may not be
+  permitted under flatex's Terms of Service — check those before using
+  this. Use is entirely at your own risk.
+
 USAGE
   flatex-fetch <command> [flags]
 
