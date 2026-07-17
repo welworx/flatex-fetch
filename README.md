@@ -147,21 +147,6 @@ pip install pre-commit
 pre-commit install
 ```
 
-## Project Structure
-
-```
-flatex-fetch/
-├── main.go                 # CLI entry point and command dispatch
-├── cli_profile.go          # profile add/list/remove
-├── cli_fetch.go            # fetch command
-├── go.mod / go.sum
-├── .golangci.yml           # linter configuration
-├── .pre-commit-config.yaml
-└── internal/
-    ├── config/             # credential encryption, profile storage
-    └── portal/             # flatex.at HTTP client: login, listing, download
-```
-
 ## Dependencies
 
 - [golang.org/x/crypto](https://pkg.go.dev/golang.org/x/crypto) — argon2id + AES-256-GCM credential encryption
