@@ -8,7 +8,7 @@ import (
 )
 
 func TestResolveProfilesAndCredsDefaultsToFirstProfile(t *testing.T) {
-	t.Setenv("HOME", t.TempDir()) // config.Dir() honors $HOME
+	isolateConfigDir(t)
 	t.Setenv("FLATEX_FETCH_PASSPHRASE", "pp")
 
 	cfgDir, err := config.Dir()

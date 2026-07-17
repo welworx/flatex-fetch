@@ -110,7 +110,7 @@ func TestRunListProfileAndAllProfilesMutuallyExclusive(t *testing.T) {
 }
 
 func TestRunListDefaultsToFirstProfileWhenNoneConfigured(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	isolateConfigDir(t)
 	if got := runList(nil); got != 1 {
 		t.Fatalf("runList() = %d, want 1 (no profiles configured)", got)
 	}

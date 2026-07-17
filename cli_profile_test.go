@@ -19,7 +19,7 @@ func TestReadPassphraseFromEnv(t *testing.T) {
 }
 
 func TestRunProfileAddFromEnv(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	isolateConfigDir(t)
 	t.Setenv("FLATEX_FETCH_PASSPHRASE", "pp")
 	t.Setenv("FLATEX_FETCH_USERNAME", "alice")
 	t.Setenv("FLATEX_FETCH_PASSWORD", "pw1")
