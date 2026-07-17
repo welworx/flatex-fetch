@@ -65,7 +65,7 @@ func TestE2EListDownload(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	path, skipped, err := c.Download(from, to, rows[0], dir, map[string]bool{}, false)
+	path, skipped, err := c.Download(from, to, rows[0], flatResolvePath(dir), map[string]bool{}, false)
 	if err != nil {
 		t.Fatalf("live download failed: %v", err)
 	}

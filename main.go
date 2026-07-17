@@ -16,7 +16,7 @@ func usage() int {
   flatex-fetch profile add <name> -domain flatex.at
   flatex-fetch profile list
   flatex-fetch profile remove <name>
-  flatex-fetch fetch [-profile <name>|-all-profiles] [-out DIR] [-user-agent UA] [-days N | -from YYYY-MM-DD -to YYYY-MM-DD] [-all]
+  flatex-fetch fetch [-profile <name>|-all-profiles] [-out DIR] [-format TEMPLATE] [-user-agent UA] [-days N | -from YYYY-MM-DD -to YYYY-MM-DD] [-all]
   flatex-fetch list [-profile <name>|-all-profiles] [-user-agent UA] [-days N | -from YYYY-MM-DD -to YYYY-MM-DD] [-csv | -json]
   flatex-fetch -version
 
@@ -51,10 +51,27 @@ FETCH/LIST FLAGS
   -user-agent UA     override the built-in browser User-Agent
   fetch also:
   -out DIR           output directory (default ~/flatex-downloads)
+  -format TEMPLATE   output path template relative to -out (default <profile>/<filename>)
   -all               re-download documents that already exist locally
   list also:
   -csv               output CSV instead of a table
   -json              output JSON instead of a table
+
+FORMAT TEMPLATE
+  -format takes a path template with <token> placeholders, substituted per
+  document and split on "/" into directories:
+    <profile>       profile name
+    <type>          document category, as shown by 'list'
+    <filename>      portal's original filename, extension stripped
+                    (aliases: <original filename>, <org filename>)
+    <date>          document date, YYYY-MM-DD
+    <date LAYOUT>   document date with LAYOUT built from YYYY/MM/DD
+
+  Example: -format "<type>/<date YYYY-MM-DD>/<filename>.pdf"
+    -> flatex-downloads/Kontoauszug/2026-07-16/invoice.pdf
+
+  Example: -format "<profile>/<date YYYY>/<date>-<type>-<filename>.pdf"
+    -> flatex-downloads/main/2026/2026-07-16-Kontoauszug-invoice.pdf
 
 ENVIRONMENT
   FLATEX_FETCH_PASSPHRASE   credentials.enc master passphrase (skip the prompt)

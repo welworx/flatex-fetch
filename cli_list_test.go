@@ -52,18 +52,21 @@ func captureStdout(t *testing.T, f func(w *os.File)) string {
 }
 
 func TestWriteDocumentsTable(t *testing.T) {
-	out := captureStdout(t, func(w *os.File) { writeDocumentsTable(w, testDocs()) })
+	out := captureStdout(t, func(w *os.File) { writeDocumentsTable(w, testDocs(), "main") })
 	if !strings.Contains(out, "Einladung Hauptversammlung") || !strings.Contains(out, "Kontoauszug vom 10.07.2026") {
 		t.Fatalf("table missing document names: %s", out)
 	}
 	if !strings.Contains(out, "2026-07-16") || !strings.Contains(out, "true") || !strings.Contains(out, "false") {
 		t.Fatalf("table missing date/read columns: %s", out)
 	}
+	if !strings.Contains(out, "main") {
+		t.Fatalf("table missing profile column: %s", out)
+	}
 }
 
 func TestWriteDocumentsCSV(t *testing.T) {
 	out := captureStdout(t, func(w *os.File) {
-		if err := writeDocumentsCSV(w, testDocs()); err != nil {
+		if err := writeDocumentsCSV(w, testDocs(), "main"); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -71,8 +74,11 @@ func TestWriteDocumentsCSV(t *testing.T) {
 	if len(lines) != 3 {
 		t.Fatalf("csv lines = %d, want 3 (header + 2 rows): %s", len(lines), out)
 	}
-	if lines[0] != "index,date,category,read,name" {
+	if lines[0] != "profile,index,date,category,read,name" {
 		t.Fatalf("csv header = %q", lines[0])
+	}
+	if !strings.HasPrefix(lines[1], "main,") || !strings.HasPrefix(lines[2], "main,") {
+		t.Fatalf("csv rows missing profile: %v", lines[1:])
 	}
 	if !strings.Contains(lines[1], "Hauptversammlung") || !strings.Contains(lines[2], "Kontoauszug") {
 		t.Fatalf("csv rows = %v", lines[1:])
@@ -81,7 +87,7 @@ func TestWriteDocumentsCSV(t *testing.T) {
 
 func TestWriteDocumentsJSON(t *testing.T) {
 	out := captureStdout(t, func(w *os.File) {
-		if err := writeDocumentsJSON(w, testDocs()); err != nil {
+		if err := writeDocumentsJSON(w, testDocs(), "main"); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -91,6 +97,9 @@ func TestWriteDocumentsJSON(t *testing.T) {
 	}
 	if len(rows) != 2 || rows[0].Index != 0 || rows[0].Date != "2026-07-16" || !rows[0].Read {
 		t.Fatalf("rows = %+v", rows)
+	}
+	if rows[0].Profile != "main" || rows[1].Profile != "main" {
+		t.Fatalf("rows missing profile: %+v", rows)
 	}
 	if rows[1].Index != 1 || rows[1].Read {
 		t.Fatalf("rows[1] = %+v", rows[1])
