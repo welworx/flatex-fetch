@@ -13,3 +13,11 @@ func TestRunNoArgs(t *testing.T) {
 		t.Fatalf("run() = %d, want 2 (usage error)", got)
 	}
 }
+
+func TestRunHelp(t *testing.T) {
+	for _, arg := range []string{"-help", "--help", "help"} {
+		if got := run([]string{arg}); got != 0 {
+			t.Fatalf("run(%q) = %d, want 0", arg, got)
+		}
+	}
+}
