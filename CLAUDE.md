@@ -24,17 +24,12 @@ first page of archive results is fetched — pagination via the portal's
 Tag `v*` → `.github/workflows/release.yml` builds darwin/linux/windows ×
 amd64/arm64 and attaches binaries to the GitHub release.
 
-## Docs
-
-CLI flags, env vars, and behavior are documented in two places: `main.go`'s
-`-help` text (canonical) and `README.md` (Usage/Setup/ENVIRONMENT). Any
-change to either surface must update both in the same change — this has
-drifted before (see the `FLATEX_FETCH_DOMAIN`/env-creds-bypass work). Don't
-add a third copy (e.g. a full `-help` dump in the README) — that's just
-another place to drift.
-
 ## Gotchas
 
+- CLI flags/env vars/behavior are documented in two places: `main.go`'s
+  `-help` text (canonical) and `README.md` (Usage/Setup/ENVIRONMENT). Update
+  both in the same change — this has drifted before. Don't add a third copy
+  (e.g. a full `-help` dump in the README).
 - `internal/portal/markup.go` holds every portal-derived constant (paths,
   form fields, combobox indices, regexes). Filter comboboxes are numeric
   indices, not stable IDs — if flatex reorders a dropdown, fix it there.
