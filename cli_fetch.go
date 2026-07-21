@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -244,6 +245,12 @@ func fetchProfile(p config.Profile, password, out, format, userAgent string, fro
 	if err != nil {
 		return err
 	}
+	// Oldest first: -since-last resumes from the newest document date
+	// already fetched (see lastDocumentDate), so if a run is interrupted
+	// partway through, that frontier must be gapless — a later, newer
+	// document downloaded before an older one would let -since-last skip
+	// the older one forever on the next run.
+	sort.Slice(docs, func(i, j int) bool { return docs[i].Date.Before(docs[j].Date) })
 	if verbose {
 		fmt.Fprintf(os.Stderr, "profile %s: %d document(s) in range\n", p.Name, len(docs))
 	}
