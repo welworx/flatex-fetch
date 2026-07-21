@@ -37,6 +37,27 @@ first and abandoned — two separate live failures, documented in
 Tag `v*` → `.github/workflows/release.yml` builds darwin/linux/windows ×
 amd64/arm64 and attaches binaries to the GitHub release.
 
+**The workflow does NOT write release notes** — `softprops/action-gh-release`
+is called with only `files:`, no `body`/`generate_release_notes`. Every tag
+push creates a release with an EMPTY description unless you write it by
+hand afterward. This has been forgotten before (v0.3.0 and v0.4.0 both
+shipped with no notes until fixed retroactively) — after pushing a tag,
+always follow up with:
+
+    gh release edit vX.Y.Z --notes "$(cat <<'EOF'
+    <one-line summary>
+
+    ## Added / Changed / Fixed
+    - ...
+
+    **Full Changelog**: https://github.com/welworx/flatex-fetch/compare/vPREV...vX.Y.Z
+    EOF
+    )"
+
+Match the style already in past releases (`gh release view vX.Y.Z --json body -q .body`
+to see examples) — sections drawn from `git log vPREV..vX.Y.Z`, not just the
+latest commit message.
+
 ## Notes
 
 - CLI flags/env vars/behavior are documented in two places: `main.go`'s
