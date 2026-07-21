@@ -30,13 +30,23 @@ type Client struct {
 	hc                  *http.Client
 	baseURL             string // https://konto.flatex.at; tests point this at httptest
 	ua                  string
-	delay               time.Duration // requestDelay; tests set 0
-	archiveListPath     string        // /banking-<domain>/documentArchiveListFormAction.do
-	accountOverviewPath string        // /banking-<domain>/accountOverviewFormAction.do
-	headerAreaPath      string        // /banking-<domain>/headerAreaFormAction.do
-	ajaxCommandPath     string        // /banking-<domain>/ajaxCommandServlet
-	tokenID             string        // server-issued, extracted from response bodies
-	windowID            string        // client-generated once per Client, not server-issued
+	delay               time.Duration                    // requestDelay; tests set 0
+	archiveListPath     string                           // /banking-<domain>/documentArchiveListFormAction.do
+	accountOverviewPath string                           // /banking-<domain>/accountOverviewFormAction.do
+	headerAreaPath      string                           // /banking-<domain>/headerAreaFormAction.do
+	ajaxCommandPath     string                           // /banking-<domain>/ajaxCommandServlet
+	tokenID             string                           // server-issued, extracted from response bodies
+	windowID            string                           // client-generated once per Client, not server-issued
+	Log                 func(format string, args ...any) // optional progress hook (see windowedDocuments); nil is silent
+}
+
+// logf reports windowedDocuments progress to Log, if set. Silent by default
+// since a wide date range can issue many paced sub-window requests with no
+// other visible feedback.
+func (c *Client) logf(format string, args ...any) {
+	if c.Log != nil {
+		c.Log(format, args...)
+	}
 }
 
 // New returns a client for a portal domain like "flatex.at" (default and
@@ -469,6 +479,7 @@ func (c *Client) windowedDocuments(from, to time.Time) ([]Document, error) {
 	if to.Before(from) {
 		return nil, nil
 	}
+	c.logf("querying %s..%s", from.Format("2006-01-02"), to.Format("2006-01-02"))
 	body, err := c.filterArchive(from, to)
 	if err != nil {
 		return nil, err
@@ -479,8 +490,10 @@ func (c *Client) windowedDocuments(from, to time.Time) ([]Document, error) {
 			// Can't narrow further and still no usable result — return
 			// what we have (nothing) rather than fail the whole listing
 			// over an extreme edge case.
+			c.logf("  %s..%s: no results", from.Format("2006-01-02"), to.Format("2006-01-02"))
 			return nil, nil
 		}
+		c.logf("  %s..%s: no table rendered, splitting", from.Format("2006-01-02"), to.Format("2006-01-02"))
 		return c.splitDocuments(from, to, days)
 	}
 	rowsHTML, err := replacePortionsHTML(body)
@@ -489,8 +502,10 @@ func (c *Client) windowedDocuments(from, to time.Time) ([]Document, error) {
 	}
 	docs := parseDocuments(rowsHTML)
 	if days > 0 && (len(docs) >= capLimit || strings.Contains(body, capWarning)) {
+		c.logf("  %s..%s: capped at %d, splitting", from.Format("2006-01-02"), to.Format("2006-01-02"), len(docs))
 		return c.splitDocuments(from, to, days)
 	}
+	c.logf("  %s..%s: %d document(s)", from.Format("2006-01-02"), to.Format("2006-01-02"), len(docs))
 	for i := range docs {
 		docs[i].WindowFrom = from
 		docs[i].WindowTo = to

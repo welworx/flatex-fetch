@@ -463,3 +463,9 @@ func TestRunUpgradeUnknownFlag(t *testing.T) {
 		t.Fatalf("runUpgrade(-bogus) = %d, want 2", got)
 	}
 }
+
+func TestRunUpgradeRejectsUnexpectedArgument(t *testing.T) {
+	if got := runUpgrade([]string{"-check", "bogus"}); got != 2 {
+		t.Fatalf("runUpgrade(-check bogus) = %d, want 2", got)
+	}
+}

@@ -77,6 +77,34 @@ func readDownloadLog(out string) (map[string][]downloadLogEntry, error) {
 	return entries, sc.Err()
 }
 
+// lastDocumentDate returns the latest document Date (not the Time it was
+// fetched) across all of profile's log entries, for -since-last: resuming
+// from the newest document already fetched, not from when fetch last ran,
+// so it also works to continue an interrupted historical backfill rather
+// than only catching up on genuinely new documents. Entries with an
+// unparseable Date are ignored rather than failing the read (see
+// readDownloadLog).
+func lastDocumentDate(entries map[string][]downloadLogEntry, profile string) (time.Time, bool) {
+	var last time.Time
+	found := false
+	for _, group := range entries {
+		for _, e := range group {
+			if e.Profile != profile {
+				continue
+			}
+			t, err := time.Parse("2006-01-02", e.Date)
+			if err != nil {
+				continue
+			}
+			if !found || t.After(last) {
+				last = t
+				found = true
+			}
+		}
+	}
+	return last, found
+}
+
 // alreadyLogged reports the local path of a previously logged download for
 // d, but only when exactly one log entry matches (several documents can
 // share the same date/category/name — e.g. same-day purchases with

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -115,12 +116,28 @@ func runFetch(args []string) int {
 	days := fs.Int("days", 7, "fetch documents from the last N days")
 	fromFlag := fs.String("from", "", "start date YYYY-MM-DD (with -to; overrides -days)")
 	toFlag := fs.String("to", "", "end date YYYY-MM-DD (with -from)")
+	sinceLast := fs.Bool("since-last", false, "fetch documents from each profile's latest already-fetched document date, in <out>/.fetch-log.jsonl, through today (falls back to -days if no log yet); mutually exclusive with -days/-from/-to")
 	all := fs.Bool("all", false, "re-download documents that already exist locally")
+	verbose := fs.Bool("verbose", false, "print progress to stderr: date ranges queried, documents found, per-document skip/download status")
 	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if fs.NArg() > 0 {
+		fmt.Fprintf(os.Stderr, "error: unexpected argument %q\n", fs.Arg(0))
 		return 2
 	}
 	if !profileFlagsValid(*profileName, *allProfiles) {
 		fmt.Fprintln(os.Stderr, "error: -profile and -all-profiles are mutually exclusive")
+		return 2
+	}
+	explicitRange := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "days" || f.Name == "from" || f.Name == "to" {
+			explicitRange = true
+		}
+	})
+	if *sinceLast && explicitRange {
+		fmt.Fprintln(os.Stderr, "error: -since-last is mutually exclusive with -days/-from/-to")
 		return 2
 	}
 	if *format != "" {
@@ -151,7 +168,7 @@ func runFetch(args []string) int {
 
 	failed := false
 	for _, p := range profiles {
-		if err := fetchProfile(p, creds[p.Name], *out, *format, *userAgent, from, to, *all); err != nil {
+		if err := fetchProfile(p, creds[p.Name], *out, *format, *userAgent, from, to, *sinceLast, *all, *verbose); err != nil {
 			fmt.Fprintf(os.Stderr, "profile %s: %v\n", p.Name, err)
 			failed = true
 		}
@@ -189,8 +206,13 @@ func documentPathResolver(out, format, profile string, d portal.Document) portal
 
 // fetchProfile logs in and downloads one profile's documents. A single
 // failed document is logged and skipped; only login/listing failures abort
-// the profile.
-func fetchProfile(p config.Profile, password, out, format, userAgent string, from, to time.Time, overwrite bool) error {
+// the profile. With sinceLast, from/to are overridden per-profile from that
+// profile's own latest already-fetched document date (falling back to the
+// given from/to if the profile has no log entries yet). With verbose, progress
+// (windows queried, documents found, per-document skip/download outcome)
+// is printed to stderr as it happens — useful on a wide date range, where
+// otherwise nothing prints until the final summary line.
+func fetchProfile(p config.Profile, password, out, format, userAgent string, from, to time.Time, sinceLast, overwrite, verbose bool) error {
 	if password == "" {
 		return errors.New("no stored password (re-add the profile)")
 	}
@@ -198,25 +220,54 @@ func fetchProfile(p config.Profile, password, out, format, userAgent string, fro
 	if err != nil {
 		return err
 	}
-	if err := c.Login(p.Username, password); err != nil {
-		return err
+	if verbose {
+		c.Log = func(format string, args ...any) {
+			fmt.Fprintf(os.Stderr, "profile %s: "+format+"\n", append([]any{p.Name}, args...)...)
+		}
 	}
-	docs, err := c.ListDocumentsDetailed(from, to)
-	if err != nil {
+	if err := c.Login(p.Username, password); err != nil {
 		return err
 	}
 	logEntries, err := readDownloadLog(out)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "profile %s: reading download log: %v\n", p.Name, err)
 	}
+	if sinceLast {
+		if last, ok := lastDocumentDate(logEntries, p.Name); ok {
+			from = last
+		}
+		to = time.Now()
+	}
+	if verbose {
+		fmt.Fprintf(os.Stderr, "profile %s: listing documents %s..%s\n", p.Name, from.Format("2006-01-02"), to.Format("2006-01-02"))
+	}
+	docs, err := c.ListDocumentsDetailed(from, to)
+	if err != nil {
+		return err
+	}
+	// Oldest first: -since-last resumes from the newest document date
+	// already fetched (see lastDocumentDate), so if a run is interrupted
+	// partway through, that frontier must be gapless — a later, newer
+	// document downloaded before an older one would let -since-last skip
+	// the older one forever on the next run.
+	sort.Slice(docs, func(i, j int) bool { return docs[i].Date.Before(docs[j].Date) })
+	if verbose {
+		fmt.Fprintf(os.Stderr, "profile %s: %d document(s) in range\n", p.Name, len(docs))
+	}
 	seen := map[string]bool{}
 	downloaded, skipped, failedDocs := 0, 0, 0
 	for _, d := range docs {
 		if !overwrite {
 			if _, ok := alreadyLogged(logEntries, p.Name, d); ok {
+				if verbose {
+					fmt.Fprintf(os.Stderr, "profile %s: skip (logged): %s\n", p.Name, describeDocument(d))
+				}
 				skipped++
 				continue
 			}
+		}
+		if verbose {
+			fmt.Fprintf(os.Stderr, "profile %s: downloading: %s\n", p.Name, describeDocument(d))
 		}
 		resolvePath := documentPathResolver(out, format, p.Name, d)
 		path, wasSkipped, err := c.Download(d.WindowFrom, d.WindowTo, d.Index, resolvePath, seen, overwrite)
@@ -228,6 +279,16 @@ func fetchProfile(p config.Profile, password, out, format, userAgent string, fro
 			fmt.Fprintf(os.Stderr, "profile %s: %s: %v\n", p.Name, describeDocument(d), err)
 			failedDocs++
 		case wasSkipped:
+			if verbose {
+				fmt.Fprintf(os.Stderr, "profile %s: skip (on disk): %s\n", p.Name, describeDocument(d))
+			}
+			// Not in the log (else alreadyLogged would have skipped
+			// before ever calling Download) but already on disk, e.g.
+			// from a run before logging existed. Backfill the entry now
+			// so future runs recognize it without re-downloading.
+			if err := logDownload(out, p.Name, path, d); err != nil {
+				fmt.Fprintf(os.Stderr, "profile %s: %s: log write failed: %v\n", p.Name, describeDocument(d), err)
+			}
 			skipped++
 		default:
 			fmt.Println(path)

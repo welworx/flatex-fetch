@@ -112,6 +112,43 @@ func TestAlreadyLoggedAmbiguousMatch(t *testing.T) {
 	}
 }
 
+func TestLastDocumentDate(t *testing.T) {
+	dir := t.TempDir()
+	// Backfill order: an old document (2021) gets fetched AFTER (later
+	// "time") a newer one (2026) already on disk. lastDocumentDate must go
+	// by the document's own Date, not fetch order/Time, or -since-last
+	// would regress to the old document's date on the next run.
+	newDoc := portal.Document{Category: "Kontoauszug", Name: "new", Date: time.Date(2026, 7, 11, 0, 0, 0, 0, time.UTC)}
+	if err := logDownload(dir, "main", filepath.Join(dir, "1.pdf"), newDoc); err != nil {
+		t.Fatal(err)
+	}
+	oldDoc := portal.Document{Category: "Kontoauszug", Name: "old", Date: time.Date(2021, 7, 10, 0, 0, 0, 0, time.UTC)}
+	if err := logDownload(dir, "main", filepath.Join(dir, "2.pdf"), oldDoc); err != nil {
+		t.Fatal(err)
+	}
+	newerOtherProfile := portal.Document{Category: "Kontoauszug", Name: "newer", Date: time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)}
+	if err := logDownload(dir, "other", filepath.Join(dir, "3.pdf"), newerOtherProfile); err != nil {
+		t.Fatal(err)
+	}
+
+	entries, err := readDownloadLog(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, ok := lastDocumentDate(entries, "main")
+	if !ok {
+		t.Fatal("lastDocumentDate ok = false, want true")
+	}
+	if want := newDoc.Date; !got.Equal(want) {
+		t.Errorf("lastDocumentDate = %v, want %v (newest document date, not fetch order)", got, want)
+	}
+
+	if _, ok := lastDocumentDate(entries, "nonexistent"); ok {
+		t.Error("lastDocumentDate ok = true for a profile with no entries")
+	}
+}
+
 func TestReadDownloadLogMissingFile(t *testing.T) {
 	entries, err := readDownloadLog(t.TempDir())
 	if err != nil {
