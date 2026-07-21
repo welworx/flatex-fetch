@@ -28,10 +28,11 @@ those PDFs into structured JSON — this tool only fetches.
 - **Incremental by default**: already-downloaded documents are skipped —
   unambiguous ones without even re-contacting the portal, via the download
   log; `-all` re-downloads everything in range
-- **Flexible date ranges**: `-days`, or explicit `-from`/`-to` — a wide
-  range is adaptively split into as many sub-windows as the portal
-  actually needs, so its 100-document cap on filtered queries doesn't
-  silently truncate results
+- **Flexible date ranges**: `-days`, explicit `-from`/`-to`, or `-since-last`
+  (per profile, from its last logged download) — a wide range is
+  adaptively split into as many sub-windows as the portal actually needs,
+  so its 100-document cap on filtered queries doesn't silently truncate
+  results
 - **Configurable output paths**: `-format` templates the download path per
   document (profile, category, date, filename), instead of the fixed
   `<profile>/<filename>` layout
@@ -68,6 +69,7 @@ that mode; the portal domain defaults to `flatex.at`, overridable via
     flatex-fetch fetch -profile main -from 2026-01-01 -to 2026-06-30
     flatex-fetch fetch -profile main -all -days 365  # re-download existing too
     flatex-fetch fetch -all-profiles
+    flatex-fetch fetch -since-last -all-profiles      # only what's arrived since each profile's last fetch
 
     # list without downloading, as a table, CSV, or JSON
     flatex-fetch list -profile main

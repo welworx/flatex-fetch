@@ -77,6 +77,30 @@ func readDownloadLog(out string) (map[string][]downloadLogEntry, error) {
 	return entries, sc.Err()
 }
 
+// lastDownloadTime returns the most recent Time across all of profile's log
+// entries, for -since-last. Entries with an unparseable Time are ignored
+// rather than failing the read (see readDownloadLog).
+func lastDownloadTime(entries map[string][]downloadLogEntry, profile string) (time.Time, bool) {
+	var last time.Time
+	found := false
+	for _, group := range entries {
+		for _, e := range group {
+			if e.Profile != profile {
+				continue
+			}
+			t, err := time.Parse(time.RFC3339, e.Time)
+			if err != nil {
+				continue
+			}
+			if !found || t.After(last) {
+				last = t
+				found = true
+			}
+		}
+	}
+	return last, found
+}
+
 // alreadyLogged reports the local path of a previously logged download for
 // d, but only when exactly one log entry matches (several documents can
 // share the same date/category/name — e.g. same-day purchases with

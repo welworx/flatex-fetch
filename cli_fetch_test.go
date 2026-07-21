@@ -73,6 +73,17 @@ func TestResolveProfilesAndCredsEnvBypassesProfiles(t *testing.T) {
 	}
 }
 
+func TestRunFetchSinceLastRejectsExplicitRange(t *testing.T) {
+	for _, args := range [][]string{
+		{"-since-last", "-days", "30"},
+		{"-since-last", "-from", "2026-01-01", "-to", "2026-06-30"},
+	} {
+		if got := runFetch(args); got != 2 {
+			t.Fatalf("runFetch(%v) = %d, want 2", args, got)
+		}
+	}
+}
+
 func TestDateRange(t *testing.T) {
 	now := time.Date(2026, 7, 16, 12, 0, 0, 0, time.UTC)
 

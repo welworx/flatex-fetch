@@ -115,12 +115,23 @@ func runFetch(args []string) int {
 	days := fs.Int("days", 7, "fetch documents from the last N days")
 	fromFlag := fs.String("from", "", "start date YYYY-MM-DD (with -to; overrides -days)")
 	toFlag := fs.String("to", "", "end date YYYY-MM-DD (with -from)")
+	sinceLast := fs.Bool("since-last", false, "fetch documents since each profile's last logged download in <out>/.fetch-log.jsonl (falls back to -days if no log yet); mutually exclusive with -days/-from/-to")
 	all := fs.Bool("all", false, "re-download documents that already exist locally")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	if !profileFlagsValid(*profileName, *allProfiles) {
 		fmt.Fprintln(os.Stderr, "error: -profile and -all-profiles are mutually exclusive")
+		return 2
+	}
+	explicitRange := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "days" || f.Name == "from" || f.Name == "to" {
+			explicitRange = true
+		}
+	})
+	if *sinceLast && explicitRange {
+		fmt.Fprintln(os.Stderr, "error: -since-last is mutually exclusive with -days/-from/-to")
 		return 2
 	}
 	if *format != "" {
@@ -151,7 +162,7 @@ func runFetch(args []string) int {
 
 	failed := false
 	for _, p := range profiles {
-		if err := fetchProfile(p, creds[p.Name], *out, *format, *userAgent, from, to, *all); err != nil {
+		if err := fetchProfile(p, creds[p.Name], *out, *format, *userAgent, from, to, *sinceLast, *all); err != nil {
 			fmt.Fprintf(os.Stderr, "profile %s: %v\n", p.Name, err)
 			failed = true
 		}
@@ -189,8 +200,10 @@ func documentPathResolver(out, format, profile string, d portal.Document) portal
 
 // fetchProfile logs in and downloads one profile's documents. A single
 // failed document is logged and skipped; only login/listing failures abort
-// the profile.
-func fetchProfile(p config.Profile, password, out, format, userAgent string, from, to time.Time, overwrite bool) error {
+// the profile. With sinceLast, from/to are overridden per-profile from that
+// profile's own last logged download time (falling back to the given
+// from/to if the profile has no log entries yet).
+func fetchProfile(p config.Profile, password, out, format, userAgent string, from, to time.Time, sinceLast, overwrite bool) error {
 	if password == "" {
 		return errors.New("no stored password (re-add the profile)")
 	}
@@ -201,13 +214,19 @@ func fetchProfile(p config.Profile, password, out, format, userAgent string, fro
 	if err := c.Login(p.Username, password); err != nil {
 		return err
 	}
-	docs, err := c.ListDocumentsDetailed(from, to)
-	if err != nil {
-		return err
-	}
 	logEntries, err := readDownloadLog(out)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "profile %s: reading download log: %v\n", p.Name, err)
+	}
+	if sinceLast {
+		if last, ok := lastDownloadTime(logEntries, p.Name); ok {
+			from = last
+		}
+		to = time.Now()
+	}
+	docs, err := c.ListDocumentsDetailed(from, to)
+	if err != nil {
+		return err
 	}
 	seen := map[string]bool{}
 	downloaded, skipped, failedDocs := 0, 0, 0

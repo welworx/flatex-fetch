@@ -112,6 +112,43 @@ func TestAlreadyLoggedAmbiguousMatch(t *testing.T) {
 	}
 }
 
+func TestLastDownloadTime(t *testing.T) {
+	dir := t.TempDir()
+	d := portal.Document{Category: "Kontoauszug", Name: "doc", Date: time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)}
+	if err := logDownload(dir, "main", filepath.Join(dir, "1.pdf"), d); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(2 * time.Millisecond) // ensure a distinct, later RFC3339 timestamp
+	d2 := portal.Document{Category: "Kontoauszug", Name: "doc2", Date: time.Date(2026, 7, 11, 0, 0, 0, 0, time.UTC)}
+	if err := logDownload(dir, "main", filepath.Join(dir, "2.pdf"), d2); err != nil {
+		t.Fatal(err)
+	}
+	if err := logDownload(dir, "other", filepath.Join(dir, "3.pdf"), d2); err != nil {
+		t.Fatal(err)
+	}
+
+	entries, err := readDownloadLog(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, ok := lastDownloadTime(entries, "main")
+	if !ok {
+		t.Fatal("lastDownloadTime ok = false, want true")
+	}
+	want, err := time.Parse(time.RFC3339, entries[logKey("main", "2026-07-11", "Kontoauszug", "doc2")][0].Time)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Equal(want) {
+		t.Errorf("lastDownloadTime = %v, want %v", got, want)
+	}
+
+	if _, ok := lastDownloadTime(entries, "nonexistent"); ok {
+		t.Error("lastDownloadTime ok = true for a profile with no entries")
+	}
+}
+
 func TestReadDownloadLogMissingFile(t *testing.T) {
 	entries, err := readDownloadLog(t.TempDir())
 	if err != nil {
