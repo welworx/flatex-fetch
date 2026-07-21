@@ -25,12 +25,18 @@ those PDFs into structured JSON — this tool only fetches.
   argon2id + AES-256-GCM, unlocked by a master passphrase (prompt or env var)
 - **Multi-profile**: manage several portal logins (`profile add|list|remove`)
   and fetch one or all of them in a single run
-- **Incremental by default**: already-downloaded documents are skipped;
-  `-all` re-downloads everything in range
-- **Flexible date ranges**: `-days`, or explicit `-from`/`-to`
+- **Incremental by default**: already-downloaded documents are skipped —
+  unambiguous ones without even re-contacting the portal, via the download
+  log; `-all` re-downloads everything in range
+- **Flexible date ranges**: `-days`, or explicit `-from`/`-to` — a wide
+  range is adaptively split into as many sub-windows as the portal
+  actually needs, so its 100-document cap on filtered queries doesn't
+  silently truncate results
 - **Configurable output paths**: `-format` templates the download path per
   document (profile, category, date, filename), instead of the fixed
   `<profile>/<filename>` layout
+- **Download log**: every file written is appended, with metadata, to
+  `<out>/.fetch-log.jsonl`
 
 ## Install
 
@@ -75,7 +81,19 @@ fetch (or list) every profile instead. When multiple profiles are processed,
 
 PDFs land in `~/flatex-downloads/<profile>/` (`-out` overrides), named by
 the portal's own filename. Already-downloaded files are skipped unless
-`-all` is set. Exit status is non-zero if any profile or document failed.
+`-all` is set. Exit status is non-zero if any profile or document failed;
+a failed document's message identifies it by date/category/name (the
+portal has no stable per-document URL).
+
+Every file `fetch` writes is also appended, one JSON object per line, to
+`<out>/.fetch-log.jsonl` (time, profile, document index/date/category/name,
+local path). On later runs, a listed document whose log entry is
+unambiguous (no other document shares its date/category/name) and whose
+file still exists on disk is skipped without contacting the portal again —
+so re-running `fetch` over an overlapping range doesn't re-pay the paced
+request cost for documents you already have. Ambiguous or stale entries
+just fall back to the normal fetch-then-check-disk path. `-all` bypasses
+both the log and the on-disk check.
 
 `-user-agent` overrides the built-in browser User-Agent string.
 
@@ -124,15 +142,16 @@ the rendered path is the same across runs.
 
 - flatex.at only; flatex.de is untested (`-domain` exists but unverified).
 - No 2FA handling — document access currently doesn't require it.
-- Only the first page of archive results is fetched — a very wide
-  `-days`/`-from`/`-to` range with many documents may not return everything.
+- A custom date-range filter caps the portal's own results at 100
+  documents — not always with a UI warning to detect, so this is caught by
+  row count too — and a too-wide range can silently return nothing at all
+  instead. `fetch`/`list` work around both by adaptively splitting a wide
+  range into as many sub-windows as the portal actually needs.
 
 Login, document listing, and download are confirmed working against a real
-flatex.at account (2026-07-16).
-
-## Roadmap
-
-- [ ] Pagination via the portal's "load more" control.
+flatex.at account (2026-07-16), including windowed listing across a wide
+date range (2026-07-21: 235 documents from a year, correctly split into 4
+sub-windows).
 
 ## Development
 

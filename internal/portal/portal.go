@@ -404,8 +404,9 @@ func archiveFilterForm(from, to time.Time) url.Values {
 // The real per-row content (names, dates) is in the same response but is
 // deliberately not parsed — only the row-index markers, present regardless
 // of document content, are used. Known gap: only the first page of results
-// is returned — the portal pages further results via a "load more" control
-// (btnRetrieveMore.clicked=true) that isn't implemented yet.
+// is returned (unlike ListDocumentsDetailed, which windows around this —
+// see its doc comment — ListDocuments isn't used by fetch/list in
+// production, so it hasn't been worth the same treatment).
 func (c *Client) ListDocuments(from, to time.Time) ([]int, error) {
 	body, err := c.filterArchive(from, to)
 	if err != nil {
@@ -415,30 +416,108 @@ func (c *Client) ListDocuments(from, to time.Time) ([]int, error) {
 }
 
 // Document is one archived document's metadata, as shown in the portal's
-// archive table. Index addresses the row within the same [from, to] window
-// Download expects.
+// archive table. Index addresses the row within the exact [WindowFrom,
+// WindowTo] filter window it was found in — not necessarily the outer
+// range originally requested, since ListDocumentsDetailed splits a wide
+// range into several narrower queries (see windowedDocuments). Download
+// must be given WindowFrom/WindowTo, not the outer range, or it will
+// select the wrong row (or none) against a differently-windowed query.
 type Document struct {
-	Index    int
-	Name     string
-	Date     time.Time
-	Category string
-	Read     bool
+	Index      int
+	Name       string
+	Date       time.Time
+	Category   string
+	Read       bool
+	WindowFrom time.Time
+	WindowTo   time.Time
 }
 
 // ListDocumentsDetailed returns every archived document's metadata in
 // [from, to] — name, date, category, and read status — for a list-only
-// view. Like ListDocuments, only the first page of results is returned
-// (see ListDocuments's doc comment).
+// view, splitting the range further (see windowedDocuments) whenever a
+// query comes back capped or empty so a wide request doesn't silently
+// come back truncated.
 func (c *Client) ListDocumentsDetailed(from, to time.Time) ([]Document, error) {
+	return c.windowedDocuments(from, to)
+}
+
+// capLimit is the portal's own cap on documents returned by one query
+// (confirmed live: "Es werden nur die ersten 100 Dokumente dargestellt.").
+// A response with exactly this many rows is treated as capped regardless
+// of whether capWarning's exact text is present — that text was only
+// confirmed from an unusual UI state (an empty-dates, custom-period
+// query), not a genuine wide explicit date range with real results, and a
+// live test showed it does NOT reliably appear when a real capped range
+// silently returns exactly 100 rows. The row count itself is the one
+// signal that's always measurable, so it's the primary check; capWarning
+// is kept as a secondary one in case it does appear in some response
+// shape not yet seen.
+const capLimit = 100
+
+// windowedDocuments lists [from, to], bisecting into narrower sub-windows
+// whenever a query's response signals it couldn't return everything —
+// capLimit rows (or capWarning) meaning capped, or a missing tableMarker
+// meaning the portal silently declined to render results at all for too
+// wide a custom range (confirmed via a live HAR capture: a several-year
+// range came back with neither the table nor any warning, just the
+// date-picker widgets re-rendering). Each returned Document carries the
+// exact sub-window it came from (WindowFrom/WindowTo), since its Index is
+// only valid within that window. Always tries the full requested range
+// first rather than pre-chunking to a guessed-safe size, so the number of
+// requests adapts to what the portal actually needs, not a fixed number.
+func (c *Client) windowedDocuments(from, to time.Time) ([]Document, error) {
+	if to.Before(from) {
+		return nil, nil
+	}
 	body, err := c.filterArchive(from, to)
 	if err != nil {
 		return nil, err
+	}
+	days := int(to.Sub(from).Hours() / 24)
+	if !strings.Contains(body, tableMarker) {
+		if days == 0 {
+			// Can't narrow further and still no usable result — return
+			// what we have (nothing) rather than fail the whole listing
+			// over an extreme edge case.
+			return nil, nil
+		}
+		return c.splitDocuments(from, to, days)
 	}
 	rowsHTML, err := replacePortionsHTML(body)
 	if err != nil {
 		return nil, err
 	}
-	return parseDocuments(rowsHTML), nil
+	docs := parseDocuments(rowsHTML)
+	if days > 0 && (len(docs) >= capLimit || strings.Contains(body, capWarning)) {
+		return c.splitDocuments(from, to, days)
+	}
+	for i := range docs {
+		docs[i].WindowFrom = from
+		docs[i].WindowTo = to
+	}
+	return docs, nil
+}
+
+// splitDocuments bisects [from, to] (days = its span, days >= 1) into two
+// non-overlapping halves and concatenates their results. half is at least
+// 1 so the split always makes progress: for days == 1 (a 2-day span),
+// days/2 truncates to 0, which would otherwise make the "right" half
+// identical to the original range and recurse forever.
+func (c *Client) splitDocuments(from, to time.Time, days int) ([]Document, error) {
+	half := days / 2
+	if half < 1 {
+		half = 1
+	}
+	mid := from.AddDate(0, 0, half)
+	left, err := c.windowedDocuments(from, mid.AddDate(0, 0, -1))
+	if err != nil {
+		return nil, err
+	}
+	right, err := c.windowedDocuments(mid, to)
+	if err != nil {
+		return nil, err
+	}
+	return append(left, right...), nil
 }
 
 func parseDocuments(rowsHTML string) []Document {

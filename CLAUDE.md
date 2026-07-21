@@ -4,10 +4,23 @@
 
 Go CLI that logs into flatex.at and downloads document-archive PDFs.
 
-**Live portal verification:** login, listing, and download are confirmed
-working against a real flatex.at account (2026-07-16). Known gap: only the
-first page of archive results is fetched — pagination via the portal's
-"load more" control isn't implemented yet.
+**Live portal verification:** login, listing, download, and windowed
+listing across a wide date range are all confirmed working against a real
+flatex.at account (2026-07-16; windowing confirmed correct 2026-07-21 —
+`TestE2EWindowedListingAndDownload` listed 235 documents across the last
+year from 4 sub-windows in 27s, and downloaded one using its own
+`WindowFrom`/`WindowTo`). Getting here took two live-caught bugs on the
+way: a too-wide single query can come back silently empty (no table
+rendered at all, detected via a missing `tableMarker`), and a capped
+response doesn't reliably show the UI's own cap-warning text (a live run
+trusting that text alone silently missed real documents — row count
+hitting `capLimit`, 100, is the reliable signal). `windowedDocuments`
+always tries the full requested range first and only splits on one of
+those two signals, so the request count adapts to what the portal actually
+needs (4 for this account/range) rather than a guessed fixed size. The
+portal's "load more" control (`fieldRetrieveMore` in markup.go) was tried
+first and abandoned — two separate live failures, documented in
+`TestE2EPagination`; nothing production uses it.
 
 ## Build
 

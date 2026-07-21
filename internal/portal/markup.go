@@ -122,3 +122,21 @@ var (
 	reDocCategory = regexp.MustCompile(`class="C3[^"]*"[^>]*><div class="Ellipsis">([^<]*)</div>`)
 	reDocName     = regexp.MustCompile(`class="C4[^"]*"[^>]*><div class="Ellipsis">([^<]*)</div>`)
 )
+
+// capWarning is the literal UI text the portal shows when a listing's
+// results were capped at 100 documents (confirmed live, 2026-07-21):
+// "Es werden nur die ersten 100 Dokumente dargestellt." ("Only the first
+// 100 documents are shown."). Detected as a plain substring of the raw
+// (still JSON-encoded) response body — the message contains no characters
+// JSON string-escaping would alter, so it survives unescaped either way.
+//
+// tableMarker is present in any response that actually rendered the
+// archive results widget — confirmed from a HAR capture (2026-07-21): a
+// custom date-range filter too wide for the portal to answer comes back
+// with neither this marker nor capWarning, just near-empty content (the
+// date-picker widgets alone re-rendering) — a distinct failure mode from
+// capping, with no explicit signal beyond this marker's absence.
+const (
+	capWarning  = "Es werden nur die ersten 100 Dokumente dargestellt."
+	tableMarker = "documentArchiveListTable"
+)

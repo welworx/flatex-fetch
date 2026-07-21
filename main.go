@@ -86,6 +86,15 @@ FORMAT TEMPLATE
   Example: -format "<profile>/<date YYYY>/<date>-<type>-<filename>.pdf"
     -> flatex-downloads/main/2026/2026-07-16-Kontoauszug-invoice.pdf
 
+DOWNLOAD LOG
+  Every file fetch writes is also appended, one JSON object per line, to
+  <out>/.fetch-log.jsonl: time, profile, document index/date/category/name,
+  and the local path. On a later run, a listed document is skipped without
+  contacting the portal again if the log has exactly one matching entry
+  (by date/category/name) and its file still exists on disk; an ambiguous
+  or stale log entry falls back to fetching normally. -all bypasses this
+  and the on-disk check both.
+
 ENVIRONMENT
   FLATEX_FETCH_PASSPHRASE   credentials.enc master passphrase (skip the prompt)
   FLATEX_FETCH_USERNAME     portal username for 'profile add' (skip the prompt);
