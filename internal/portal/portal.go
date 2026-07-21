@@ -30,13 +30,13 @@ type Client struct {
 	hc                  *http.Client
 	baseURL             string // https://konto.flatex.at; tests point this at httptest
 	ua                  string
-	delay               time.Duration // requestDelay; tests set 0
-	archiveListPath     string        // /banking-<domain>/documentArchiveListFormAction.do
-	accountOverviewPath string        // /banking-<domain>/accountOverviewFormAction.do
-	headerAreaPath      string        // /banking-<domain>/headerAreaFormAction.do
-	ajaxCommandPath     string        // /banking-<domain>/ajaxCommandServlet
-	tokenID             string        // server-issued, extracted from response bodies
-	windowID            string        // client-generated once per Client, not server-issued
+	delay               time.Duration                    // requestDelay; tests set 0
+	archiveListPath     string                           // /banking-<domain>/documentArchiveListFormAction.do
+	accountOverviewPath string                           // /banking-<domain>/accountOverviewFormAction.do
+	headerAreaPath      string                           // /banking-<domain>/headerAreaFormAction.do
+	ajaxCommandPath     string                           // /banking-<domain>/ajaxCommandServlet
+	tokenID             string                           // server-issued, extracted from response bodies
+	windowID            string                           // client-generated once per Client, not server-issued
 	Log                 func(format string, args ...any) // optional progress hook (see windowedDocuments); nil is silent
 }
 
