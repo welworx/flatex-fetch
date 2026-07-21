@@ -27,6 +27,10 @@ func runList(args []string) int {
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
+	if fs.NArg() > 0 {
+		fmt.Fprintf(os.Stderr, "error: unexpected argument %q\n", fs.Arg(0))
+		return 2
+	}
 	if !profileFlagsValid(*profileName, *allProfiles) {
 		fmt.Fprintln(os.Stderr, "error: -profile and -all-profiles are mutually exclusive")
 		return 2

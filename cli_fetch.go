@@ -117,7 +117,12 @@ func runFetch(args []string) int {
 	toFlag := fs.String("to", "", "end date YYYY-MM-DD (with -from)")
 	sinceLast := fs.Bool("since-last", false, "fetch documents since each profile's last logged download in <out>/.fetch-log.jsonl (falls back to -days if no log yet); mutually exclusive with -days/-from/-to")
 	all := fs.Bool("all", false, "re-download documents that already exist locally")
+	verbose := fs.Bool("verbose", false, "print progress to stderr: date ranges queried, documents found, per-document skip/download status")
 	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if fs.NArg() > 0 {
+		fmt.Fprintf(os.Stderr, "error: unexpected argument %q\n", fs.Arg(0))
 		return 2
 	}
 	if !profileFlagsValid(*profileName, *allProfiles) {
@@ -162,7 +167,7 @@ func runFetch(args []string) int {
 
 	failed := false
 	for _, p := range profiles {
-		if err := fetchProfile(p, creds[p.Name], *out, *format, *userAgent, from, to, *sinceLast, *all); err != nil {
+		if err := fetchProfile(p, creds[p.Name], *out, *format, *userAgent, from, to, *sinceLast, *all, *verbose); err != nil {
 			fmt.Fprintf(os.Stderr, "profile %s: %v\n", p.Name, err)
 			failed = true
 		}
@@ -202,14 +207,22 @@ func documentPathResolver(out, format, profile string, d portal.Document) portal
 // failed document is logged and skipped; only login/listing failures abort
 // the profile. With sinceLast, from/to are overridden per-profile from that
 // profile's own last logged download time (falling back to the given
-// from/to if the profile has no log entries yet).
-func fetchProfile(p config.Profile, password, out, format, userAgent string, from, to time.Time, sinceLast, overwrite bool) error {
+// from/to if the profile has no log entries yet). With verbose, progress
+// (windows queried, documents found, per-document skip/download outcome)
+// is printed to stderr as it happens — useful on a wide date range, where
+// otherwise nothing prints until the final summary line.
+func fetchProfile(p config.Profile, password, out, format, userAgent string, from, to time.Time, sinceLast, overwrite, verbose bool) error {
 	if password == "" {
 		return errors.New("no stored password (re-add the profile)")
 	}
 	c, err := portal.New(p.Domain, userAgent)
 	if err != nil {
 		return err
+	}
+	if verbose {
+		c.Log = func(format string, args ...any) {
+			fmt.Fprintf(os.Stderr, "profile %s: "+format+"\n", append([]any{p.Name}, args...)...)
+		}
 	}
 	if err := c.Login(p.Username, password); err != nil {
 		return err
@@ -224,18 +237,30 @@ func fetchProfile(p config.Profile, password, out, format, userAgent string, fro
 		}
 		to = time.Now()
 	}
+	if verbose {
+		fmt.Fprintf(os.Stderr, "profile %s: listing documents %s..%s\n", p.Name, from.Format("2006-01-02"), to.Format("2006-01-02"))
+	}
 	docs, err := c.ListDocumentsDetailed(from, to)
 	if err != nil {
 		return err
+	}
+	if verbose {
+		fmt.Fprintf(os.Stderr, "profile %s: %d document(s) in range\n", p.Name, len(docs))
 	}
 	seen := map[string]bool{}
 	downloaded, skipped, failedDocs := 0, 0, 0
 	for _, d := range docs {
 		if !overwrite {
 			if _, ok := alreadyLogged(logEntries, p.Name, d); ok {
+				if verbose {
+					fmt.Fprintf(os.Stderr, "profile %s: skip (logged): %s\n", p.Name, describeDocument(d))
+				}
 				skipped++
 				continue
 			}
+		}
+		if verbose {
+			fmt.Fprintf(os.Stderr, "profile %s: downloading: %s\n", p.Name, describeDocument(d))
 		}
 		resolvePath := documentPathResolver(out, format, p.Name, d)
 		path, wasSkipped, err := c.Download(d.WindowFrom, d.WindowTo, d.Index, resolvePath, seen, overwrite)
@@ -247,6 +272,9 @@ func fetchProfile(p config.Profile, password, out, format, userAgent string, fro
 			fmt.Fprintf(os.Stderr, "profile %s: %s: %v\n", p.Name, describeDocument(d), err)
 			failedDocs++
 		case wasSkipped:
+			if verbose {
+				fmt.Fprintf(os.Stderr, "profile %s: skip (on disk): %s\n", p.Name, describeDocument(d))
+			}
 			skipped++
 		default:
 			fmt.Println(path)

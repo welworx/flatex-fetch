@@ -16,7 +16,7 @@ func usage() int {
   flatex-fetch profile add <name> -domain flatex.at
   flatex-fetch profile list
   flatex-fetch profile remove <name>
-  flatex-fetch fetch [-profile <name>|-all-profiles] [-out DIR] [-format TEMPLATE] [-user-agent UA] [-days N | -from YYYY-MM-DD -to YYYY-MM-DD | -since-last] [-all]
+  flatex-fetch fetch [-profile <name>|-all-profiles] [-out DIR] [-format TEMPLATE] [-user-agent UA] [-days N | -from YYYY-MM-DD -to YYYY-MM-DD | -since-last] [-all] [-verbose]
   flatex-fetch list [-profile <name>|-all-profiles] [-user-agent UA] [-days N | -from YYYY-MM-DD -to YYYY-MM-DD] [-csv | -json]
   flatex-fetch upgrade [-check] [-y]
   flatex-fetch -version
@@ -63,6 +63,8 @@ FETCH/LIST FLAGS
   -since-last        fetch since each profile's last logged download in <out>/.fetch-log.jsonl
                       (falls back to -days if no log yet; mutually exclusive with -days/-from/-to)
   -all               re-download documents that already exist locally
+  -verbose           print progress to stderr: date ranges queried, documents found,
+                      per-document skip/download status
   list also:
   -csv               output CSV instead of a table
   -json              output JSON instead of a table
@@ -123,6 +125,9 @@ EXAMPLES
 
   # only what's arrived since the last fetch, per profile
   flatex-fetch fetch -since-last -all-profiles
+
+  # a wide range, with progress on stderr instead of silence until the end
+  flatex-fetch fetch -profile main -days 1800 -verbose
 
   # exact date range, re-downloading even what's already on disk
   flatex-fetch fetch -all -from 2026-01-01 -to 2026-06-30

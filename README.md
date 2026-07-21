@@ -38,6 +38,9 @@ those PDFs into structured JSON — this tool only fetches.
   `<profile>/<filename>` layout
 - **Download log**: every file written is appended, with metadata, to
   `<out>/.fetch-log.jsonl`
+- **Verbose progress**: `-verbose` prints date ranges queried, documents
+  found, and per-document skip/download status to stderr — useful on a
+  wide range, where otherwise nothing prints until the run finishes
 
 ## Install
 

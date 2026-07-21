@@ -118,6 +118,12 @@ func TestRunListProfileAndAllProfilesMutuallyExclusive(t *testing.T) {
 	}
 }
 
+func TestRunListRejectsUnexpectedArgument(t *testing.T) {
+	if got := runList([]string{"-profile", "main", "bogus"}); got != 2 {
+		t.Fatalf("runList(...) = %d, want 2", got)
+	}
+}
+
 func TestRunListDefaultsToFirstProfileWhenNoneConfigured(t *testing.T) {
 	isolateConfigDir(t)
 	if got := runList(nil); got != 1 {

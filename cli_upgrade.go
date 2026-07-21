@@ -42,6 +42,10 @@ func runUpgrade(args []string) int {
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
+	if fs.NArg() > 0 {
+		fmt.Fprintf(os.Stderr, "error: unexpected argument %q\n", fs.Arg(0))
+		return 2
+	}
 
 	var target string
 	if !*check {

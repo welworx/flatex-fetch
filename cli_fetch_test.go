@@ -84,6 +84,16 @@ func TestRunFetchSinceLastRejectsExplicitRange(t *testing.T) {
 	}
 }
 
+func TestRunFetchRejectsUnexpectedArgument(t *testing.T) {
+	// A stray positional argument (e.g. a typo'd repeated "fetch") makes Go's
+	// flag package stop parsing right there — anything after it, including
+	// real flags like -out/-format, would otherwise be silently ignored
+	// rather than applied or rejected.
+	if got := runFetch([]string{"-profile", "main", "fetch", "-out", "./downloads"}); got != 2 {
+		t.Fatalf("runFetch(...) = %d, want 2", got)
+	}
+}
+
 func TestDateRange(t *testing.T) {
 	now := time.Date(2026, 7, 16, 12, 0, 0, 0, time.UTC)
 
