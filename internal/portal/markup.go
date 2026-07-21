@@ -100,6 +100,25 @@ const (
 	fieldApplyFilter     = "applyFilterButton.clicked"
 	fieldDownloadClicked = "btnDocumentDownload.clicked"
 	rowSelectionPrefix   = "documentArchiveListTable.rowSelectionSupport[" // + "N].checked"
+
+	// fieldRetrieveMore is the archive's "load more" button field, per a
+	// live HAR capture of the browser's own scroll-triggered load-more:
+	// that request sends *only* this field. NOT currently used in
+	// production code — two live attempts to page past the archive's
+	// first results page using it have both failed:
+	//   1. merged into the full archiveFilterForm (2026-07-20): returned
+	//      0 rows and disrupted the session for later requests.
+	//   2. sent bare, per the HAR capture, but following this package's
+	//      explicit custom-date-range filter submission (2026-07-21):
+	//      also returned 0 rows. The HAR's own scroll session never
+	//      applied a custom filter before scrolling, so it only proves
+	//      the bare shape works for the *default* (unfiltered) view —
+	//      not that it composes with an explicit filter submission,
+	//      which fetch/list always do.
+	// See TestE2EPagination in e2e_test.go before trying again; a HAR
+	// capture of an explicit custom-range filter followed by scrolling
+	// would settle whether/how these compose.
+	fieldRetrieveMore = "btnRetrieveMore.clicked"
 )
 
 var (
@@ -121,4 +140,22 @@ var (
 	reDocDate     = regexp.MustCompile(`class="C2[^"]*"[^>]*>([^<]*)</td>`)
 	reDocCategory = regexp.MustCompile(`class="C3[^"]*"[^>]*><div class="Ellipsis">([^<]*)</div>`)
 	reDocName     = regexp.MustCompile(`class="C4[^"]*"[^>]*><div class="Ellipsis">([^<]*)</div>`)
+)
+
+// capWarning is the literal UI text the portal shows when a listing's
+// results were capped at 100 documents (confirmed live, 2026-07-21):
+// "Es werden nur die ersten 100 Dokumente dargestellt." ("Only the first
+// 100 documents are shown."). Detected as a plain substring of the raw
+// (still JSON-encoded) response body — the message contains no characters
+// JSON string-escaping would alter, so it survives unescaped either way.
+//
+// tableMarker is present in any response that actually rendered the
+// archive results widget — confirmed from a HAR capture (2026-07-21): a
+// custom date-range filter too wide for the portal to answer comes back
+// with neither this marker nor capWarning, just near-empty content (the
+// date-picker widgets alone re-rendering) — a distinct failure mode from
+// capping, with no explicit signal beyond this marker's absence.
+const (
+	capWarning  = "Es werden nur die ersten 100 Dokumente dargestellt."
+	tableMarker = "documentArchiveListTable"
 )

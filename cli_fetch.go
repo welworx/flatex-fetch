@@ -162,6 +162,15 @@ func runFetch(args []string) int {
 	return 0
 }
 
+// describeDocument identifies a document in an error message. The portal
+// has no stable per-document URL (a download is triggered by POSTing the
+// row index within the same session, not by fetching a fixed link), so
+// date/category/name — everything visible in the portal's own archive
+// table — is the closest identifying handle available.
+func describeDocument(d portal.Document) string {
+	return fmt.Sprintf("row %d (%s, %s, %q)", d.Index, d.Date.Format("2006-01-02"), d.Category, d.Name)
+}
+
 // documentPathResolver builds the portal.ResolvePath used for one
 // document's download. With no -format, it reproduces the historical
 // layout: out/profile/<portal filename>. With -format, the template is
@@ -196,22 +205,35 @@ func fetchProfile(p config.Profile, password, out, format, userAgent string, fro
 	if err != nil {
 		return err
 	}
+	logEntries, err := readDownloadLog(out)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "profile %s: reading download log: %v\n", p.Name, err)
+	}
 	seen := map[string]bool{}
 	downloaded, skipped, failedDocs := 0, 0, 0
 	for _, d := range docs {
+		if !overwrite {
+			if _, ok := alreadyLogged(logEntries, p.Name, d); ok {
+				skipped++
+				continue
+			}
+		}
 		resolvePath := documentPathResolver(out, format, p.Name, d)
-		path, wasSkipped, err := c.Download(from, to, d.Index, resolvePath, seen, overwrite)
+		path, wasSkipped, err := c.Download(d.WindowFrom, d.WindowTo, d.Index, resolvePath, seen, overwrite)
 		switch {
 		case errors.Is(err, portal.ErrChallenged):
-			fmt.Fprintf(os.Stderr, "profile %s: row %d: blocked by bot-check challenge\n", p.Name, d.Index)
+			fmt.Fprintf(os.Stderr, "profile %s: %s: blocked by bot-check challenge\n", p.Name, describeDocument(d))
 			failedDocs++
 		case err != nil:
-			fmt.Fprintf(os.Stderr, "profile %s: row %d: %v\n", p.Name, d.Index, err)
+			fmt.Fprintf(os.Stderr, "profile %s: %s: %v\n", p.Name, describeDocument(d), err)
 			failedDocs++
 		case wasSkipped:
 			skipped++
 		default:
 			fmt.Println(path)
+			if err := logDownload(out, p.Name, path, d); err != nil {
+				fmt.Fprintf(os.Stderr, "profile %s: %s: log write failed: %v\n", p.Name, describeDocument(d), err)
+			}
 			downloaded++
 		}
 	}

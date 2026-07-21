@@ -5,7 +5,22 @@ import (
 	"time"
 
 	"github.com/welworx/flatex-fetch/internal/config"
+	"github.com/welworx/flatex-fetch/internal/portal"
 )
+
+func TestDescribeDocument(t *testing.T) {
+	d := portal.Document{
+		Index:    7,
+		Name:     "Kontoauszug vom 10.07.2026",
+		Category: "Kontoauszug",
+		Date:     time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC),
+	}
+	got := describeDocument(d)
+	want := `row 7 (2026-07-10, Kontoauszug, "Kontoauszug vom 10.07.2026")`
+	if got != want {
+		t.Fatalf("describeDocument = %q, want %q", got, want)
+	}
+}
 
 func TestResolveProfilesAndCredsDefaultsToFirstProfile(t *testing.T) {
 	isolateConfigDir(t)
