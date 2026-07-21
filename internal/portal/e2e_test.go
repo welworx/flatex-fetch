@@ -35,10 +35,15 @@ func TestE2ELogin(t *testing.T) {
 		len(c.tokenID), len(c.windowID))
 }
 
+// fieldRetrieveMore is the archive's "load more" button field, per a live
+// HAR capture of the browser's own scroll-triggered load-more: that
+// request sends *only* this field. Dead end for this package's purposes —
+// see TestE2EPagination — so it lives here rather than markup.go: nothing
+// outside this research spike references it.
+const fieldRetrieveMore = "btnRetrieveMore.clicked"
+
 // TestE2EPagination is a research spike, NOT wired into
-// ListDocuments/ListDocumentsDetailed (they still only return the archive's
-// first results page — see their doc comments). Two live attempts so far,
-// both failed:
+// ListDocuments/ListDocumentsDetailed. Two live attempts, both failed:
 //
 //  1. (2026-07-20) fieldRetrieveMore merged into the full archiveFilterForm:
 //     returned 0 rows and appeared to disrupt the session for subsequent
@@ -47,15 +52,16 @@ func TestE2ELogin(t *testing.T) {
 //     HAR capture of the browser's own scroll-triggered load-more: still
 //     returned 0 rows. The HAR session never applied a custom date filter
 //     before scrolling — it opened the default view and scrolled — so it
-//     only proves the bare shape works there, not that it composes with
-//     an explicit filter submission (fieldApplyFilter, custom date range),
-//     which this package always does first. This test still reproduces
-//     that exact composition (filterArchive, then a bare load-more) and
-//     still gets 0.
+//     only proved the bare shape works there.
 //
-// Next step: a HAR capture of a session that applies a custom date-range
-// filter *then* scrolls, to see the real request(s) that follow the
-// filter — that's the piece neither live attempt has covered yet.
+// Root cause found afterward (not via this test): the portal's own UI
+// shows "Es werden nur die ersten 100 Dokumente dargestellt." for any
+// custom date-range filter, with no load-more control available in that
+// mode at all — scrolling for more only ever worked on the unfiltered
+// default view. fetch/list always filter by date, so this mechanism
+// isn't usable for them; the actual fix (ListDocumentsDetailed splitting
+// a wide range into sub-windows) doesn't use fieldRetrieveMore at all.
+// Kept as a record of what was tried.
 //
 // Run: go test -tags e2e -run TestE2EPagination -v ./internal/portal/
 func TestE2EPagination(t *testing.T) {

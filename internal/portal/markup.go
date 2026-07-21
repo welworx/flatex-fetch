@@ -100,25 +100,6 @@ const (
 	fieldApplyFilter     = "applyFilterButton.clicked"
 	fieldDownloadClicked = "btnDocumentDownload.clicked"
 	rowSelectionPrefix   = "documentArchiveListTable.rowSelectionSupport[" // + "N].checked"
-
-	// fieldRetrieveMore is the archive's "load more" button field, per a
-	// live HAR capture of the browser's own scroll-triggered load-more:
-	// that request sends *only* this field. NOT currently used in
-	// production code — two live attempts to page past the archive's
-	// first results page using it have both failed:
-	//   1. merged into the full archiveFilterForm (2026-07-20): returned
-	//      0 rows and disrupted the session for later requests.
-	//   2. sent bare, per the HAR capture, but following this package's
-	//      explicit custom-date-range filter submission (2026-07-21):
-	//      also returned 0 rows. The HAR's own scroll session never
-	//      applied a custom filter before scrolling, so it only proves
-	//      the bare shape works for the *default* (unfiltered) view —
-	//      not that it composes with an explicit filter submission,
-	//      which fetch/list always do.
-	// See TestE2EPagination in e2e_test.go before trying again; a HAR
-	// capture of an explicit custom-range filter followed by scrolling
-	// would settle whether/how these compose.
-	fieldRetrieveMore = "btnRetrieveMore.clicked"
 )
 
 var (
