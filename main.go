@@ -60,8 +60,9 @@ FETCH/LIST FLAGS
   fetch also:
   -out DIR           output directory (default ~/flatex-downloads)
   -format TEMPLATE   output path template relative to -out (default <profile>/<filename>)
-  -since-last        fetch since each profile's last logged download in <out>/.fetch-log.jsonl
-                      (falls back to -days if no log yet; mutually exclusive with -days/-from/-to)
+  -since-last        fetch from each profile's latest already-fetched document date, in
+                      <out>/.fetch-log.jsonl, through today (falls back to -days if no log yet;
+                      mutually exclusive with -days/-from/-to)
   -all               re-download documents that already exist locally
   -verbose           print progress to stderr: date ranges queried, documents found,
                       per-document skip/download status
@@ -123,7 +124,7 @@ EXAMPLES
   # a specific profile, wider range
   flatex-fetch fetch -profile main -days 90
 
-  # only what's arrived since the last fetch, per profile
+  # continue from each profile's newest already-fetched document date
   flatex-fetch fetch -since-last -all-profiles
 
   # a wide range, with progress on stderr instead of silence until the end

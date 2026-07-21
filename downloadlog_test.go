@@ -112,18 +112,22 @@ func TestAlreadyLoggedAmbiguousMatch(t *testing.T) {
 	}
 }
 
-func TestLastDownloadTime(t *testing.T) {
+func TestLastDocumentDate(t *testing.T) {
 	dir := t.TempDir()
-	d := portal.Document{Category: "Kontoauszug", Name: "doc", Date: time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)}
-	if err := logDownload(dir, "main", filepath.Join(dir, "1.pdf"), d); err != nil {
+	// Backfill order: an old document (2021) gets fetched AFTER (later
+	// "time") a newer one (2026) already on disk. lastDocumentDate must go
+	// by the document's own Date, not fetch order/Time, or -since-last
+	// would regress to the old document's date on the next run.
+	newDoc := portal.Document{Category: "Kontoauszug", Name: "new", Date: time.Date(2026, 7, 11, 0, 0, 0, 0, time.UTC)}
+	if err := logDownload(dir, "main", filepath.Join(dir, "1.pdf"), newDoc); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(2 * time.Millisecond) // ensure a distinct, later RFC3339 timestamp
-	d2 := portal.Document{Category: "Kontoauszug", Name: "doc2", Date: time.Date(2026, 7, 11, 0, 0, 0, 0, time.UTC)}
-	if err := logDownload(dir, "main", filepath.Join(dir, "2.pdf"), d2); err != nil {
+	oldDoc := portal.Document{Category: "Kontoauszug", Name: "old", Date: time.Date(2021, 7, 10, 0, 0, 0, 0, time.UTC)}
+	if err := logDownload(dir, "main", filepath.Join(dir, "2.pdf"), oldDoc); err != nil {
 		t.Fatal(err)
 	}
-	if err := logDownload(dir, "other", filepath.Join(dir, "3.pdf"), d2); err != nil {
+	newerOtherProfile := portal.Document{Category: "Kontoauszug", Name: "newer", Date: time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)}
+	if err := logDownload(dir, "other", filepath.Join(dir, "3.pdf"), newerOtherProfile); err != nil {
 		t.Fatal(err)
 	}
 
@@ -132,20 +136,16 @@ func TestLastDownloadTime(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, ok := lastDownloadTime(entries, "main")
+	got, ok := lastDocumentDate(entries, "main")
 	if !ok {
-		t.Fatal("lastDownloadTime ok = false, want true")
+		t.Fatal("lastDocumentDate ok = false, want true")
 	}
-	want, err := time.Parse(time.RFC3339, entries[logKey("main", "2026-07-11", "Kontoauszug", "doc2")][0].Time)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !got.Equal(want) {
-		t.Errorf("lastDownloadTime = %v, want %v", got, want)
+	if want := newDoc.Date; !got.Equal(want) {
+		t.Errorf("lastDocumentDate = %v, want %v (newest document date, not fetch order)", got, want)
 	}
 
-	if _, ok := lastDownloadTime(entries, "nonexistent"); ok {
-		t.Error("lastDownloadTime ok = true for a profile with no entries")
+	if _, ok := lastDocumentDate(entries, "nonexistent"); ok {
+		t.Error("lastDocumentDate ok = true for a profile with no entries")
 	}
 }
 

@@ -115,7 +115,7 @@ func runFetch(args []string) int {
 	days := fs.Int("days", 7, "fetch documents from the last N days")
 	fromFlag := fs.String("from", "", "start date YYYY-MM-DD (with -to; overrides -days)")
 	toFlag := fs.String("to", "", "end date YYYY-MM-DD (with -from)")
-	sinceLast := fs.Bool("since-last", false, "fetch documents since each profile's last logged download in <out>/.fetch-log.jsonl (falls back to -days if no log yet); mutually exclusive with -days/-from/-to")
+	sinceLast := fs.Bool("since-last", false, "fetch documents from each profile's latest already-fetched document date, in <out>/.fetch-log.jsonl, through today (falls back to -days if no log yet); mutually exclusive with -days/-from/-to")
 	all := fs.Bool("all", false, "re-download documents that already exist locally")
 	verbose := fs.Bool("verbose", false, "print progress to stderr: date ranges queried, documents found, per-document skip/download status")
 	if err := fs.Parse(args); err != nil {
@@ -206,8 +206,8 @@ func documentPathResolver(out, format, profile string, d portal.Document) portal
 // fetchProfile logs in and downloads one profile's documents. A single
 // failed document is logged and skipped; only login/listing failures abort
 // the profile. With sinceLast, from/to are overridden per-profile from that
-// profile's own last logged download time (falling back to the given
-// from/to if the profile has no log entries yet). With verbose, progress
+// profile's own latest already-fetched document date (falling back to the
+// given from/to if the profile has no log entries yet). With verbose, progress
 // (windows queried, documents found, per-document skip/download outcome)
 // is printed to stderr as it happens — useful on a wide date range, where
 // otherwise nothing prints until the final summary line.
@@ -232,7 +232,7 @@ func fetchProfile(p config.Profile, password, out, format, userAgent string, fro
 		fmt.Fprintf(os.Stderr, "profile %s: reading download log: %v\n", p.Name, err)
 	}
 	if sinceLast {
-		if last, ok := lastDownloadTime(logEntries, p.Name); ok {
+		if last, ok := lastDocumentDate(logEntries, p.Name); ok {
 			from = last
 		}
 		to = time.Now()
