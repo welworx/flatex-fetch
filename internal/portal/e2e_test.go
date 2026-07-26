@@ -242,7 +242,7 @@ func TestE2EListDocumentsDetailed(t *testing.T) {
 		t.Skip("no documents in the last 90 days; cannot verify metadata parsing")
 	}
 	for _, d := range docs {
-		if d.Name == "" || d.Category == "" || d.Date.IsZero() {
+		if d.Name == "" || d.Date.IsZero() {
 			t.Errorf("document at index %d missing metadata: %+v", d.Index, d)
 		}
 	}

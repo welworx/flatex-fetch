@@ -14,14 +14,18 @@ import (
 // downloadLogEntry is one line in <out>/.fetch-log.jsonl — an append-only
 // record of what fetch has written, independent of the files themselves
 // (so it survives moving or pruning downloads).
+// downloadLogEntry's "category" field was dropped along with
+// portal.Document.Category (flatex-next has no per-document-type
+// equivalent to expose one for) — omitted here, but still tolerated on
+// read: encoding/json silently ignores an unrecognized "category" key in
+// log lines written by an older build.
 type downloadLogEntry struct {
-	Time     string `json:"time"`
-	Profile  string `json:"profile"`
-	Index    int    `json:"index"`
-	Date     string `json:"date"`
-	Category string `json:"category"`
-	Name     string `json:"name"`
-	Path     string `json:"path"`
+	Time    string `json:"time"`
+	Profile string `json:"profile"`
+	Index   int    `json:"index"`
+	Date    string `json:"date"`
+	Name    string `json:"name"`
+	Path    string `json:"path"`
 }
 
 // logDownload appends one entry to <out>/.fetch-log.jsonl for a document
@@ -33,21 +37,20 @@ func logDownload(out, profile, path string, d portal.Document) error {
 	}
 	defer f.Close()
 	return json.NewEncoder(f).Encode(downloadLogEntry{
-		Time:     time.Now().Format(time.RFC3339),
-		Profile:  profile,
-		Index:    d.Index,
-		Date:     d.Date.Format("2006-01-02"),
-		Category: d.Category,
-		Name:     d.Name,
-		Path:     path,
+		Time:    time.Now().Format(time.RFC3339),
+		Profile: profile,
+		Index:   d.Index,
+		Date:    d.Date.Format("2006-01-02"),
+		Name:    d.Name,
+		Path:    path,
 	})
 }
 
 // logKey identifies a document the same way across runs: d.Index is only
 // stable within one [from, to] listing window (see portal.Document), so it
-// can't be used here — date/category/name is the closest we have.
-func logKey(profile, date, category, name string) string {
-	return profile + "\x00" + date + "\x00" + category + "\x00" + name
+// can't be used here — date/name is the closest we have.
+func logKey(profile, date, name string) string {
+	return profile + "\x00" + date + "\x00" + name
 }
 
 // readDownloadLog reads <out>/.fetch-log.jsonl, if present, grouped by
@@ -71,7 +74,7 @@ func readDownloadLog(out string) (map[string][]downloadLogEntry, error) {
 		if json.Unmarshal(sc.Bytes(), &e) != nil {
 			continue
 		}
-		key := logKey(e.Profile, e.Date, e.Category, e.Name)
+		key := logKey(e.Profile, e.Date, e.Name)
 		entries[key] = append(entries[key], e)
 	}
 	return entries, sc.Err()
@@ -107,12 +110,12 @@ func lastDocumentDate(entries map[string][]downloadLogEntry, profile string) (ti
 
 // alreadyLogged reports the local path of a previously logged download for
 // d, but only when exactly one log entry matches (several documents can
-// share the same date/category/name — e.g. same-day purchases with
-// identical descriptions — and such a key is ambiguous) and that file
-// still exists on disk right now. Otherwise it's not safe to skip
-// fetching, and the caller should fetch normally.
+// share the same date/name — e.g. same-day purchases with identical
+// descriptions — and such a key is ambiguous) and that file still exists
+// on disk right now. Otherwise it's not safe to skip fetching, and the
+// caller should fetch normally.
 func alreadyLogged(entries map[string][]downloadLogEntry, profile string, d portal.Document) (string, bool) {
-	matches := entries[logKey(profile, d.Date.Format("2006-01-02"), d.Category, d.Name)]
+	matches := entries[logKey(profile, d.Date.Format("2006-01-02"), d.Name)]
 	if len(matches) != 1 {
 		return "", false
 	}

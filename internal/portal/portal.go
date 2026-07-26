@@ -20,23 +20,40 @@ import (
 	"time"
 )
 
-const defaultUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+// DefaultUserAgent is what New uses when userAgent is "". Exported so
+// callers can show it (e.g. a -verbose settings summary) instead of just
+// saying "default" without the actual value in effect.
+const DefaultUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 
 // requestDelay paces portal requests to stay under bot detection.
 // ponytail: fixed constant, promote to a flag only if it ever needs tuning.
 const requestDelay = 750 * time.Millisecond
+
+// uiVariant is which frontend an account's session landed on after login —
+// detected in Login, not configured. The old UI and flatex-next share the
+// same underlying widget/AJAX framework (tokenId, windowId registration,
+// the fullPageReplace resync signal, the {"commands":[...]} envelope); only
+// paths and archive-widget field names differ, so most of Client's plumbing
+// is reused unchanged across both.
+type uiVariant int
+
+const (
+	variantOld uiVariant = iota
+	variantNext
+)
 
 type Client struct {
 	hc                  *http.Client
 	baseURL             string // https://konto.flatex.at; tests point this at httptest
 	ua                  string
 	delay               time.Duration                    // requestDelay; tests set 0
-	archiveListPath     string                           // /banking-<domain>/documentArchiveListFormAction.do
+	archiveListPath     string                           // /banking-<domain>/documentArchiveListFormAction.do, repointed to flatex-next's overviewFormAction.do once detected
 	accountOverviewPath string                           // /banking-<domain>/accountOverviewFormAction.do
 	headerAreaPath      string                           // /banking-<domain>/headerAreaFormAction.do
-	ajaxCommandPath     string                           // /banking-<domain>/ajaxCommandServlet
+	ajaxCommandPath     string                           // /banking-<domain>/ajaxCommandServlet, repointed to flatex-next's once detected
 	tokenID             string                           // server-issued, extracted from response bodies
 	windowID            string                           // client-generated once per Client, not server-issued
+	variant             uiVariant                        // set by Login once the post-credentials redirect lands
 	Log                 func(format string, args ...any) // optional progress hook (see windowedDocuments); nil is silent
 }
 
@@ -59,7 +76,7 @@ func New(domain, userAgent string) (*Client, error) {
 		return nil, err
 	}
 	if userAgent == "" {
-		userAgent = defaultUserAgent
+		userAgent = DefaultUserAgent
 	}
 	return &Client{
 		hc:                  &http.Client{Jar: jar, Timeout: 60 * time.Second},
@@ -93,8 +110,10 @@ func (c *Client) pace() {
 // without them the portal returns the plain full-page HTML instead of the
 // {"commands":[...]} JSON envelope. Skip ajax for requests that bypass the
 // portal's own jQuery AJAX layer entirely, like the plain-form login
-// submit (see Login). Caller gets the body as string.
-func (c *Client) do(req *http.Request, ajax bool) (string, error) {
+// submit (see Login). Caller gets the body as string, plus the final URL
+// (after Go's default http.Client has followed any redirects) — Login uses
+// this to tell the old UI and flatex-next apart.
+func (c *Client) do(req *http.Request, ajax bool) (string, *url.URL, error) {
 	c.pace()
 	req.Header.Set("User-Agent", c.ua)
 	if ajax {
@@ -108,19 +127,19 @@ func (c *Client) do(req *http.Request, ajax bool) (string, error) {
 	}
 	resp, err := c.hc.Do(req)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("%s %s: HTTP %d", req.Method, req.URL.Path, resp.StatusCode)
+		return "", nil, fmt.Errorf("%s %s: HTTP %d", req.Method, req.URL.Path, resp.StatusCode)
 	}
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	body := string(b)
 	c.updateToken(body)
-	return body, nil
+	return body, resp.Request.URL, nil
 }
 
 func (c *Client) updateToken(body string) {
@@ -135,7 +154,8 @@ func (c *Client) getAjax(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return c.do(req, true)
+	body, _, err := c.do(req, true)
+	return body, err
 }
 
 // postForm issues an AJAX-style form POST (X-tokenId/X-windowId echoed) as
@@ -203,7 +223,8 @@ func (c *Client) postFormOnce(path string, form url.Values) (string, error) {
 		return "", err
 	}
 	req.Header.Set("Content-Type", mw.FormDataContentType())
-	return c.do(req, true)
+	body, _, err := c.do(req, true)
+	return body, err
 }
 
 // plainGet issues a non-AJAX GET — no X-Requested-With/X-AJAX/X-tokenId/
@@ -219,7 +240,8 @@ func (c *Client) plainGet(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return c.do(req, false)
+	body, _, err := c.do(req, false)
+	return body, err
 }
 
 // windowIDFromLocation extracts the windowId query parameter from a
@@ -247,7 +269,8 @@ func (c *Client) postAjaxCommand(command string, extra url.Values) (string, erro
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	return c.do(req, true)
+	body, _, err := c.do(req, true)
+	return body, err
 }
 
 // engineStartUp registers this client's windowId with the server — every
@@ -304,10 +327,11 @@ func deviceDataJSON(ua string) (string, error) {
 // which bypasses jQuery's AJAX layer entirely (confirmed from the login
 // form's own HTML/JS) — so this request carries none of the
 // X-Requested-With/X-tokenId/X-windowId headers the archive endpoints use.
-//
-// After a session cookie is granted, the account overview page is loaded
-// to confirm the login actually succeeded and to re-seed tokenId for the
-// banking-app context.
+// This part — the login page GET, the /login.at/sso POST, and its fields —
+// is identical for the old UI and flatex-next (confirmed from both
+// accounts' capture bytes); the two diverge only in where the POST's
+// redirect chain (auto-followed by net/http's default client) lands, which
+// is what Login inspects to pick a variant and finish accordingly.
 func (c *Client) Login(username, password string) error {
 	if _, err := c.getAjax(pathLoginPage); err != nil {
 		return fmt.Errorf("login: loading login page: %w", err)
@@ -329,11 +353,19 @@ func (c *Client) Login(username, password string) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	if _, err := c.do(req, false); err != nil {
+	_, finalURL, err := c.do(req, false)
+	if err != nil {
 		return fmt.Errorf("login: %w", err)
 	}
 	if !c.hasSessionCookie() {
 		return errors.New("login: no session cookie granted (wrong credentials?)")
+	}
+
+	if finalURL != nil && strings.Contains(finalURL.Path, "/"+nextDesktopSegment+"/") {
+		c.variant = variantNext
+		c.archiveListPath = "/" + nextDesktopSegment + "/" + nextArchiveAction
+		c.ajaxCommandPath = "/" + nextDesktopSegment + "/" + ajaxCommandAction
+		return c.loginNext()
 	}
 
 	if _, err := c.getAjax(c.accountOverviewPath); err != nil {
@@ -350,6 +382,57 @@ func (c *Client) Login(username, password string) error {
 		return fmt.Errorf("login: %w", err)
 	}
 	return nil
+}
+
+// loginNext finishes flatex-next's login sequence once the credentials POST
+// has landed on loginProgressFormAction.do — confirmed live (2026-07-26):
+// this is materially more steps than the old UI, and the session isn't
+// actually usable until cmdResumeLogin runs (the browser's own
+// processCommandQueue response explicitly instructs it — see markup.go).
+// Followed here exactly as captured rather than guessing which steps are
+// skippable, matching this package's general policy of not assuming a step
+// is decorative just because it looks like client-side bookkeeping (see
+// ensureArchivePage's history).
+func (c *Client) loginNext() error {
+	if err := c.engineStartUp(); err != nil {
+		return fmt.Errorf("login (flatex-next): %w", err)
+	}
+	if _, err := c.getAjaxFollowingReplace("/" + nextDesktopSegment + "/" + loginProgressAction); err != nil {
+		return fmt.Errorf("login (flatex-next): loading dashboard shell: %w", err)
+	}
+	if c.tokenID == "" {
+		return errors.New("login: could not extract tokenId after login (wrong credentials?)")
+	}
+	if _, err := c.postAjaxCommand(cmdResumeLogin, nil); err != nil {
+		return fmt.Errorf("login (flatex-next): resumeLogin: %w", err)
+	}
+	return nil
+}
+
+// getAjaxFollowingReplace GETs path as an AJAX request and, if the response
+// is a "fullPageReplace" (the server's way of saying this windowId isn't
+// registered yet for this page context), follows it the same way postForm
+// does for POSTs: resync via fetchCachedPage, then engineStartUp, matching
+// what a real browser's own JS does on every full page load.
+func (c *Client) getAjaxFollowingReplace(path string) (string, error) {
+	body, err := c.getAjax(path)
+	if err != nil {
+		return "", err
+	}
+	loc, ok := fullPageReplaceLocation(body)
+	if !ok {
+		return body, nil
+	}
+	if wid := windowIDFromLocation(loc); wid != "" {
+		c.windowID = wid
+	}
+	if _, err := c.plainGet(loc); err != nil {
+		return "", fmt.Errorf("resyncing session: %w", err)
+	}
+	if err := c.engineStartUp(); err != nil {
+		return "", fmt.Errorf("resyncing session: %w", err)
+	}
+	return c.getAjax(path)
 }
 
 func (c *Client) hasSessionCookie() bool {
@@ -374,9 +457,11 @@ func (c *Client) ensureArchivePage() error {
 		fieldSearchEditField:            {""},
 		fieldMenuDocumentArchiveClicked: {"true"},
 	}
-	if _, err := c.postForm(c.headerAreaPath, form); err != nil {
+	body, err := c.postForm(c.headerAreaPath, form)
+	if err != nil {
 		return fmt.Errorf("navigating to document archive: %w", err)
 	}
+	c.logf("  open archive: %s", describeCommands(body))
 	return nil
 }
 
@@ -392,6 +477,7 @@ func (c *Client) filterArchive(from, to time.Time) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("list %s..%s: %w", from.Format("02.01.2006"), to.Format("02.01.2006"), err)
 	}
+	c.logf("  apply filter: %s", describeCommands(body))
 	return body, nil
 }
 
@@ -436,18 +522,21 @@ type Document struct {
 	Index      int
 	Name       string
 	Date       time.Time
-	Category   string
 	Read       bool
 	WindowFrom time.Time
 	WindowTo   time.Time
 }
 
 // ListDocumentsDetailed returns every archived document's metadata in
-// [from, to] — name, date, category, and read status — for a list-only
+// [from, to] — name, date, and read status — for a list-only
 // view, splitting the range further (see windowedDocuments) whenever a
 // query comes back capped or empty so a wide request doesn't silently
-// come back truncated.
+// come back truncated. flatex-next sessions (see Login) use a different
+// listing mechanism entirely — see nextListDocuments.
 func (c *Client) ListDocumentsDetailed(from, to time.Time) ([]Document, error) {
+	if c.variant == variantNext {
+		return c.nextListDocuments(from, to)
+	}
 	return c.windowedDocuments(from, to)
 }
 
@@ -501,6 +590,7 @@ func (c *Client) windowedDocuments(from, to time.Time) ([]Document, error) {
 		return nil, err
 	}
 	docs := parseDocuments(rowsHTML)
+	c.logf("  parsed %d document(s)", len(docs))
 	if days > 0 && (len(docs) >= capLimit || strings.Contains(body, capWarning)) {
 		c.logf("  %s..%s: capped at %d, splitting", from.Format("2006-01-02"), to.Format("2006-01-02"), len(docs))
 		return c.splitDocuments(from, to, days)
@@ -554,9 +644,6 @@ func parseDocuments(rowsHTML string) []Document {
 			if t, err := time.Parse("02.01.2006", strings.TrimSpace(dm[1])); err == nil {
 				doc.Date = t
 			}
-		}
-		if cm := reDocCategory.FindStringSubmatch(row); cm != nil {
-			doc.Category = html.UnescapeString(strings.TrimSpace(cm[1]))
 		}
 		if nm := reDocName.FindStringSubmatch(row); nm != nil {
 			doc.Name = html.UnescapeString(strings.TrimSpace(nm[1]))

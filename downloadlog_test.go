@@ -13,7 +13,7 @@ import (
 
 func TestLogDownloadAppends(t *testing.T) {
 	dir := t.TempDir()
-	d := portal.Document{Index: 3, Category: "Kontoauszug", Name: "Kontoauszug vom 10.07.2026", Date: time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)}
+	d := portal.Document{Index: 3, Name: "Kontoauszug vom 10.07.2026", Date: time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)}
 
 	if err := logDownload(dir, "main", filepath.Join(dir, "main", "doc1.pdf"), d); err != nil {
 		t.Fatal(err)
@@ -40,7 +40,7 @@ func TestLogDownloadAppends(t *testing.T) {
 	if len(lines) != 2 {
 		t.Fatalf("got %d log lines, want 2", len(lines))
 	}
-	if lines[0].Profile != "main" || lines[0].Index != 3 || lines[0].Category != "Kontoauszug" ||
+	if lines[0].Profile != "main" || lines[0].Index != 3 ||
 		lines[0].Date != "2026-07-10" || lines[0].Path != filepath.Join(dir, "main", "doc1.pdf") {
 		t.Fatalf("entry = %+v", lines[0])
 	}
@@ -55,7 +55,7 @@ func TestAlreadyLoggedUnambiguousMatchOnDisk(t *testing.T) {
 	if err := os.WriteFile(path, []byte("pdf"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	d := portal.Document{Category: "Kontoauszug", Name: "Kontoauszug vom 10.07.2026", Date: time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)}
+	d := portal.Document{Name: "Kontoauszug vom 10.07.2026", Date: time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)}
 	if err := logDownload(dir, "main", path, d); err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestAlreadyLoggedFileMissing(t *testing.T) {
 	dir := t.TempDir()
 	// never actually written to disk, unlike TestLogDownloadAppends
 	path := filepath.Join(dir, "gone.pdf")
-	d := portal.Document{Category: "Kontoauszug", Name: "Kontoauszug vom 10.07.2026", Date: time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)}
+	d := portal.Document{Name: "Kontoauszug vom 10.07.2026", Date: time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)}
 	if err := logDownload(dir, "main", path, d); err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestAlreadyLoggedFileMissing(t *testing.T) {
 
 func TestAlreadyLoggedAmbiguousMatch(t *testing.T) {
 	dir := t.TempDir()
-	d := portal.Document{Category: "Kauf Fonds/Zertifikate", Name: "Kauf", Date: time.Date(2026, 7, 15, 0, 0, 0, 0, time.UTC)}
+	d := portal.Document{Name: "Kauf", Date: time.Date(2026, 7, 15, 0, 0, 0, 0, time.UTC)}
 	for _, name := range []string{"a.pdf", "b.pdf"} {
 		path := filepath.Join(dir, name)
 		if err := os.WriteFile(path, []byte("pdf"), 0600); err != nil {
@@ -105,7 +105,7 @@ func TestAlreadyLoggedAmbiguousMatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// two distinct documents logged under the identical date/category/name
+	// two distinct documents logged under the identical date/name
 	// key -> ambiguous, must not be treated as "already have it"
 	if _, ok := alreadyLogged(entries, "main", d); ok {
 		t.Fatal("alreadyLogged = true for an ambiguous (2-entry) key")
@@ -118,15 +118,15 @@ func TestLastDocumentDate(t *testing.T) {
 	// "time") a newer one (2026) already on disk. lastDocumentDate must go
 	// by the document's own Date, not fetch order/Time, or -since-last
 	// would regress to the old document's date on the next run.
-	newDoc := portal.Document{Category: "Kontoauszug", Name: "new", Date: time.Date(2026, 7, 11, 0, 0, 0, 0, time.UTC)}
+	newDoc := portal.Document{Name: "new", Date: time.Date(2026, 7, 11, 0, 0, 0, 0, time.UTC)}
 	if err := logDownload(dir, "main", filepath.Join(dir, "1.pdf"), newDoc); err != nil {
 		t.Fatal(err)
 	}
-	oldDoc := portal.Document{Category: "Kontoauszug", Name: "old", Date: time.Date(2021, 7, 10, 0, 0, 0, 0, time.UTC)}
+	oldDoc := portal.Document{Name: "old", Date: time.Date(2021, 7, 10, 0, 0, 0, 0, time.UTC)}
 	if err := logDownload(dir, "main", filepath.Join(dir, "2.pdf"), oldDoc); err != nil {
 		t.Fatal(err)
 	}
-	newerOtherProfile := portal.Document{Category: "Kontoauszug", Name: "newer", Date: time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)}
+	newerOtherProfile := portal.Document{Name: "newer", Date: time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)}
 	if err := logDownload(dir, "other", filepath.Join(dir, "3.pdf"), newerOtherProfile); err != nil {
 		t.Fatal(err)
 	}
