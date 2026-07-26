@@ -22,14 +22,14 @@ portal's "load more" control (`fieldRetrieveMore` in markup.go) was tried
 first and abandoned — two separate live failures, documented in
 `TestE2EPagination`; nothing production uses it.
 
-**flatex-next support (added 2026-07-27, NOT yet live-verified):** the
-newer React-shell UI (`next-desktop.at`) is a different frontend on the
-same backend session framework. `Client.Login` auto-detects it from where
-the `/login.at/sso` POST's redirect chain lands — no flag, no CLI change.
-Reverse-engineered from a single live Chrome netlog capture (raw bytes
-included, so request/response bodies were visible, not just headers) of
-one real account with one ~1-month date range (~200 documents). Login
-itself (`internal/portal/portal.go`'s `loginNext`) mirrors the capture
+**flatex-next support (added 2026-07-27):** the newer React-shell UI
+(`next-desktop.at`) is a different frontend on the same backend session
+framework. `Client.Login` auto-detects it from where the `/login.at/sso`
+POST's redirect chain lands — no flag, no CLI change. Reverse-engineered
+from a single live Chrome netlog capture (raw bytes included, so
+request/response bodies were visible, not just headers) of one real
+account with one ~1-month date range (~200 documents). Login itself
+(`internal/portal/portal.go`'s `loginNext`) mirrors the capture
 step-for-step, including a `resumeLogin` AJAX command the session doesn't
 work without. Listing/download (`internal/portal/next.go`) use a
 completely different widget model than the old UI — entries grouped under
@@ -37,12 +37,22 @@ per-date headers instead of a flat table, one-document-at-a-time download
 instead of batch-select, and pagination via an incrementing
 `scrollposition` field instead of date-windowing (`nextListDocuments`
 pages until a request stops returning more entries than the last one).
-**Unlike everything else in this file, none of this has been exercised
-against a real flatex-next account yet** — the pagination step size
-(`nextScrollStep`) and its behavior past what the one capture showed, and
-whether flatex-next has anything like `capLimit`, are unverified. Treat a
-flatex-next result set with more suspicion than an old-UI one until this
-gets a live run and, likely, at least one bug fix — same pattern as the
+Login, listing, and download are confirmed working against a real
+flatex-next account (2026-07-27, a 7-day window — 4 documents, one new
+download plus three correctly deduped as already-downloaded). Getting a
+working run took one live-caught bug: `archiveListPath` was pointed at
+the old UI's action name (`documentArchiveListFormAction.do`) instead of
+flatex-next's actual `overviewFormAction.do`, which the unit tests didn't
+catch because they used the same wrong constant on both the mock server
+and the assertion — every request came back as a `redirect` command to
+`error404.html`, caught via `-verbose`'s command-name diagnostics
+(`describeCommands` in next.go).
+**What's still unverified:** pagination beyond a single batch —
+`nextScrollStep` and its behavior at scale, and whether flatex-next has
+anything like `capLimit` — since the only live run so far never triggered
+the scroll loop (well under one batch). Treat a flatex-next result set
+larger than ~50 documents with more suspicion than an old-UI one until
+that's been exercised — same pattern as the
 old UI's own windowing history above.
 
 ## Build

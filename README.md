@@ -154,10 +154,11 @@ the rendered path is the same across runs.
   range into as many sub-windows as the portal actually needs.
 - Both the classic portal UI and the newer "flatex-next" UI
   (`next-desktop.at`) are supported — auto-detected at login, no flag
-  needed. flatex-next support is new and, unlike the rest of this list,
-  **not yet confirmed against a real account**: it was built from a single
-  captured session and its pagination/result-limit behavior beyond that
-  capture is unverified.
+  needed. Confirmed working against a real flatex-next account
+  (2026-07-27) for login, listing, and download on a small (7-day, 4
+  document) window. Its pagination beyond a single batch of results is
+  still unverified — treat a flatex-next result set larger than ~50
+  documents with more suspicion than an old-UI one for now.
 
 Login, document listing, and download are confirmed working against a real
 flatex.at account (2026-07-16), including windowed listing across a wide
