@@ -194,7 +194,7 @@ func runFetch(args []string) int {
 		fmt.Fprintf(os.Stderr, "settings: out=%s format=%s range=%s all=%t since-last=%t user-agent=%s\n",
 			*out, orDefault(*format, "<profile>/<filename> (portal's own name)"),
 			rangeDescription(*days, from, to, explicitRange, *sinceLast),
-			*all, *sinceLast, orDefault(*userAgent, "(built-in browser UA)"))
+			*all, *sinceLast, orDefault(*userAgent, portal.DefaultUserAgent))
 	}
 
 	failed := false

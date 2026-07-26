@@ -20,7 +20,10 @@ import (
 	"time"
 )
 
-const defaultUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+// DefaultUserAgent is what New uses when userAgent is "". Exported so
+// callers can show it (e.g. a -verbose settings summary) instead of just
+// saying "default" without the actual value in effect.
+const DefaultUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 
 // requestDelay paces portal requests to stay under bot detection.
 // ponytail: fixed constant, promote to a flag only if it ever needs tuning.
@@ -73,7 +76,7 @@ func New(domain, userAgent string) (*Client, error) {
 		return nil, err
 	}
 	if userAgent == "" {
-		userAgent = defaultUserAgent
+		userAgent = DefaultUserAgent
 	}
 	return &Client{
 		hc:                  &http.Client{Jar: jar, Timeout: 60 * time.Second},

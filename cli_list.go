@@ -62,7 +62,7 @@ func runList(args []string) int {
 		fmt.Fprintf(os.Stderr, "settings: format=%s range=%s user-agent=%s\n",
 			outputFormatDescription(*csvOut, *jsonOut),
 			rangeDescription(*days, from, to, explicitRange, false),
-			orDefault(*userAgent, "(built-in browser UA)"))
+			orDefault(*userAgent, portal.DefaultUserAgent))
 	}
 
 	failed := false
