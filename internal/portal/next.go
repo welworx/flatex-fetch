@@ -38,14 +38,15 @@ func (c *Client) nextOpenArchive() error {
 }
 
 // describeCommands is a -verbose diagnostic: the command names in an
-// archive-endpoint response, so a live run that comes back with 0
-// documents shows whether the portal returned a real (but empty)
-// replacePortions, got stuck on a repeated fullPageReplace, or something
-// else entirely — see nextListDocuments/next.go's verification-status note.
-// Any command whose name isn't one this package already understands is
-// dumped in full (raw JSON, not just the known Location/Script fields),
-// since an unrecognized command's exact field names are, by definition,
-// not yet in the ajaxCommand struct.
+// archive-endpoint response (old UI and flatex-next both use the same
+// {"commands":[...]} envelope, see ajaxResponse in download.go), so a live
+// run that comes back with 0 documents shows whether the portal returned a
+// real (but empty) replacePortions, got stuck on a repeated
+// fullPageReplace, or something else entirely. Any command whose name
+// isn't one this package already understands is dumped in full (raw JSON,
+// not just the known Location/Script fields), since an unrecognized
+// command's exact field names are, by definition, not yet in the
+// ajaxCommand struct.
 func describeCommands(body string) string {
 	var raw struct {
 		Commands []map[string]any `json:"commands"`

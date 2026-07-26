@@ -457,9 +457,11 @@ func (c *Client) ensureArchivePage() error {
 		fieldSearchEditField:            {""},
 		fieldMenuDocumentArchiveClicked: {"true"},
 	}
-	if _, err := c.postForm(c.headerAreaPath, form); err != nil {
+	body, err := c.postForm(c.headerAreaPath, form)
+	if err != nil {
 		return fmt.Errorf("navigating to document archive: %w", err)
 	}
+	c.logf("  open archive: %s", describeCommands(body))
 	return nil
 }
 
@@ -475,6 +477,7 @@ func (c *Client) filterArchive(from, to time.Time) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("list %s..%s: %w", from.Format("02.01.2006"), to.Format("02.01.2006"), err)
 	}
+	c.logf("  apply filter: %s", describeCommands(body))
 	return body, nil
 }
 
@@ -587,6 +590,7 @@ func (c *Client) windowedDocuments(from, to time.Time) ([]Document, error) {
 		return nil, err
 	}
 	docs := parseDocuments(rowsHTML)
+	c.logf("  parsed %d document(s)", len(docs))
 	if days > 0 && (len(docs) >= capLimit || strings.Contains(body, capWarning)) {
 		c.logf("  %s..%s: capped at %d, splitting", from.Format("2006-01-02"), to.Format("2006-01-02"), len(docs))
 		return c.splitDocuments(from, to, days)
