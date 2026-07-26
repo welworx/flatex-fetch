@@ -22,6 +22,29 @@ portal's "load more" control (`fieldRetrieveMore` in markup.go) was tried
 first and abandoned — two separate live failures, documented in
 `TestE2EPagination`; nothing production uses it.
 
+**flatex-next support (added 2026-07-27, NOT yet live-verified):** the
+newer React-shell UI (`next-desktop.at`) is a different frontend on the
+same backend session framework. `Client.Login` auto-detects it from where
+the `/login.at/sso` POST's redirect chain lands — no flag, no CLI change.
+Reverse-engineered from a single live Chrome netlog capture (raw bytes
+included, so request/response bodies were visible, not just headers) of
+one real account with one ~1-month date range (~200 documents). Login
+itself (`internal/portal/portal.go`'s `loginNext`) mirrors the capture
+step-for-step, including a `resumeLogin` AJAX command the session doesn't
+work without. Listing/download (`internal/portal/next.go`) use a
+completely different widget model than the old UI — entries grouped under
+per-date headers instead of a flat table, one-document-at-a-time download
+instead of batch-select, and pagination via an incrementing
+`scrollposition` field instead of date-windowing (`nextListDocuments`
+pages until a request stops returning more entries than the last one).
+**Unlike everything else in this file, none of this has been exercised
+against a real flatex-next account yet** — the pagination step size
+(`nextScrollStep`) and its behavior past what the one capture showed, and
+whether flatex-next has anything like `capLimit`, are unverified. Treat a
+flatex-next result set with more suspicion than an old-UI one until this
+gets a live run and, likely, at least one bug fix — same pattern as the
+old UI's own windowing history above.
+
 ## Build
 
     go build -o flatex-fetch

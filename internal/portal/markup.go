@@ -140,3 +140,101 @@ const (
 	capWarning  = "Es werden nur die ersten 100 Dokumente dargestellt."
 	tableMarker = "documentArchiveListTable"
 )
+
+// --- flatex-next (the newer React-shell UI) ---
+//
+// Everything below mirrors flatex-next, reverse-engineered from a live
+// Chrome netlog capture (2026-07-26, raw bytes included) of a real account
+// that has switched to it. flatex-next is a different frontend on the same
+// backend session/widget framework — the low-level primitives (tokenId
+// rotation, windowId registration via engineStartUp, the fullPageReplace
+// resync signal, the {"commands":[...]} AJAX envelope) are all identical
+// and reused unchanged. What differs is the path prefix, the post-login
+// sequence, and the archive widget's field names/markup.
+//
+// Login itself (GET pathLoginPage, POST pathSSO with the same
+// userId/password/deviceDetails fields) is byte-for-byte identical —
+// confirmed from the capture's own request bytes. The account's UI variant
+// is only observable from where the POST /login.at/sso redirect chain
+// finally lands, which Login detects and branches on.
+const (
+	// nextDesktopSegment is flatex-next's banking-app path segment — a fixed
+	// literal like "login.at", NOT domain-parameterized like "banking-<domain>"
+	// (confirmed: the capture's account uses the flatex.at domain and still
+	// gets literal "next-desktop.at"). Unverified for flatex.de.
+	nextDesktopSegment = "next-desktop.at"
+
+	// loginCommand and loginProgressAction are new steps flatex-next inserts
+	// between the credentials POST and the old UI's direct
+	// accountOverviewFormAction.do landing: /login.at/sso 302s to
+	// loginCommand?loginData=<opaque token>, which itself 302s to
+	// loginProgressAction. Both hops are followed automatically by Go's
+	// default http.Client redirect handling — no code needed for them
+	// beyond detecting the final landing path.
+	loginProgressAction = "loginProgressFormAction.do"
+
+	// cmdResumeLogin finalizes the session server-side. Confirmed required
+	// (not just decorative UI bookkeeping): the capture's own
+	// processCommandQueue response explicitly instructs the client to run
+	// it — {"command":"executeServerCommand","serverCommand":"resumeLogin"}
+	// — before any overviewFormAction.do request succeeds.
+	cmdResumeLogin = "resumeLogin"
+)
+
+// Archive widget fields for flatex-next's document-archive dialog —
+// confirmed from live capture, all under the fixed
+// fullScreenSecondLevelWidgetList[0] dialog instance (numeric position, not
+// a stable ID — same fragility class as the old UI's menu-position and
+// combobox-index constants).
+const (
+	fieldNextOpenArchive = "headerAreaWidget.settingsButtonWidget.btnOpenDocumentArchive.clicked"
+	fieldNextOverviewIdx = "selectedViewWidget.overviewEntryBlockSelectionWidget.selecteditemindex"
+
+	fieldNextReadStateIdx    = "fullScreenSecondLevelWidgetList[0].secondLevelContentWidget.documentReadStatusSelectionWidget.selecteditemindex"
+	fieldNextDateRangeIdx    = "fullScreenSecondLevelWidgetList[0].secondLevelContentWidget.dateRangeSelectionWidget.cbxDateRange.selecteditemindex"
+	fieldNextDateRangeCustom = "fullScreenSecondLevelWidgetList[0].secondLevelContentWidget.dateRangeSelectionWidget.children[7].link.clicked"
+	fieldNextScrollPos       = "fullScreenSecondLevelWidgetList[0].scrollposition"
+	fieldNextReload          = "fullScreenSecondLevelWidgetList[0].secondLevelContentWidget.btnReload.clicked"
+	fieldNextOpenDocFmt      = "fullScreenSecondLevelWidgetList[0].secondLevelContentWidget.children[%d].btnOpenDocument.clicked"
+
+	// The date-range picker is a nested sub-dialog (thirdLevelWidgetList[0])
+	// submitted as its own form — confirmed live: its POST carries only
+	// these three fields, none of the parent dialog's state.
+	fieldNextDateStart = "thirdLevelWidgetList[0].dtStartDate.text"
+	fieldNextDateEnd   = "thirdLevelWidgetList[0].dtEndDate.text"
+	fieldNextDateApply = "thirdLevelWidgetList[0].btnApply.clicked"
+
+	idxNextOverviewDefault  = "0"
+	idxNextReadStateAll     = "0"
+	idxNextDateRangeDefault = "0"
+	idxNextDateRangeCustom  = "6" // paired with fieldNextDateRangeCustom + explicit dates, like the old UI's idxRetrievalPeriodCustom
+)
+
+var (
+	// reNextEntry matches one document row's opening div in the unescaped
+	// HTML from a "replacePortions" command — confirmed shape from live
+	// capture: class carries "Unread" only for unread documents (same
+	// pattern as the old UI's row class), data-widgetname's children[N]
+	// index is what fieldNextOpenDocFmt clicks to open/download it.
+	reNextEntry = regexp.MustCompile(`class="(DocumentArchiveListEntryWidget[^"]*)" data-widgetname="fullScreenSecondLevelWidgetList\[0\]\.secondLevelContentWidget\.children\[(\d+)\]\.btnOpenDocument"`)
+
+	// reNextDescription matches the row's own name/description text,
+	// searched for within a bounded slice starting at reNextEntry's match.
+	reNextDescription = regexp.MustCompile(`<div class="Description">(?:<!--[^>]*-->)?([^<]*)`)
+
+	// reNextDateHeader matches a date-group header — flatex-next groups
+	// archive entries under one header per date rather than the old UI's
+	// per-row date column. Every reNextEntry match belongs to the nearest
+	// preceding reNextDateHeader match in document order.
+	reNextDateHeader = regexp.MustCompile(`<div class="DocumentDate CategoryLabel">\s*(?:<!--[^>]*-->)?\s*(\d{2}\.\d{2}\.\d{4})`)
+
+	// reNextAnyMarker finds date headers and entries together, in document
+	// order, so a single pass can track "current date" while walking rows.
+	reNextAnyMarker = regexp.MustCompile(reNextDateHeader.String() + `|` + reNextEntry.String())
+
+	// reNextDownloadURL extracts DocumentViewer.display's first argument —
+	// the download URL — from a btnOpenDocument response's "execute"
+	// command script (see downloadLocationNext). Confirmed shape from live
+	// capture: DocumentViewer.display("/next-desktop.at/downloadData/...", "application/pdf").
+	reNextDownloadURL = regexp.MustCompile(`DocumentViewer\.display\("([^"]+)"`)
+)

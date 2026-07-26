@@ -37,6 +37,12 @@ type ajaxCommand struct {
 	// [id, html, id, html, ...] list (confirmed from live capture
 	// 2026-07-17) — only the html elements (odd indices) matter.
 	DeltasToApply []string `json:"deltasToApply"`
+
+	// Script is present on flatex-next's "execute" commands — its download
+	// trigger, unlike the old UI's dedicated "download" command with a
+	// Location field, is a JS call whose first argument is the URL (see
+	// downloadLocationNext).
+	Script string `json:"script"`
 }
 
 // replacePortionsHTML concatenates the HTML deltas from every
@@ -91,6 +97,28 @@ func downloadLocation(body string) (string, error) {
 	return "", errors.New("no download in response (document not found or already removed?)")
 }
 
+// downloadLocationNext extracts the download URL from a flatex-next
+// btnOpenDocument response's "execute" command — confirmed shape from live
+// capture: {"command":"execute","script":"DocumentViewer.display(\"/next-desktop.at/downloadData/...\", \"application/pdf\")"}.
+// Unlike the old UI, only a single document is ever selected at a time (one
+// btnOpenDocument click per row, no batch-select/zip equivalent observed),
+// so there's no zip-bundle case to handle here.
+func downloadLocationNext(body string) (string, error) {
+	var resp ajaxResponse
+	if err := json.Unmarshal([]byte(body), &resp); err != nil {
+		return "", fmt.Errorf("parsing archive response: %w", err)
+	}
+	for _, cmd := range resp.Commands {
+		if cmd.Command != "execute" {
+			continue
+		}
+		if m := reNextDownloadURL.FindStringSubmatch(cmd.Script); m != nil {
+			return m[1], nil
+		}
+	}
+	return "", errors.New("no download in response (document not found or already removed?)")
+}
+
 // ResolvePath computes a document's final destination directory and
 // filename from its resolved original filename (as reported by the
 // portal — a bare PDF's Content-Disposition/URL, or a zip entry's own
@@ -109,22 +137,32 @@ type ResolvePath func(origName string) (dir, name string)
 // _2/_3 suffixes). A file that already exists across runs is skipped
 // unless overwrite is set — that skip IS the dedup (see design spec).
 func (c *Client) Download(from, to time.Time, idx int, resolvePath ResolvePath, seen map[string]bool, overwrite bool) (string, bool, error) {
-	if err := c.ensureArchivePage(); err != nil {
-		return "", false, err
-	}
-	form := archiveFilterForm(from, to)
-	form.Set(fieldDownloadClicked, "true")
-	form.Set(fmt.Sprintf("%s%d].checked", rowSelectionPrefix, idx), "on")
-
-	body, err := c.postForm(c.archiveListPath, form)
-	if err != nil {
-		return "", false, fmt.Errorf("download row %d: %w", idx, err)
-	}
-	loc, err := downloadLocation(body)
+	loc, err := c.resolveDownloadLocation(from, to, idx)
 	if err != nil {
 		return "", false, fmt.Errorf("download row %d: %w", idx, err)
 	}
 	return c.fetchLocation(loc, resolvePath, seen, overwrite)
+}
+
+// resolveDownloadLocation triggers the portal's download response for row
+// idx within [from, to]'s filtered window and returns the resulting
+// location — flatex-next (see nextDownload) and the old UI use unrelated
+// selection/response shapes, so this is where the two branch.
+func (c *Client) resolveDownloadLocation(from, to time.Time, idx int) (string, error) {
+	if c.variant == variantNext {
+		return c.nextDownload(from, to, idx)
+	}
+	if err := c.ensureArchivePage(); err != nil {
+		return "", err
+	}
+	form := archiveFilterForm(from, to)
+	form.Set(fieldDownloadClicked, "true")
+	form.Set(fmt.Sprintf("%s%d].checked", rowSelectionPrefix, idx), "on")
+	body, err := c.postForm(c.archiveListPath, form)
+	if err != nil {
+		return "", err
+	}
+	return downloadLocation(body)
 }
 
 // fetchLocation GETs a download location returned by the archive endpoint
