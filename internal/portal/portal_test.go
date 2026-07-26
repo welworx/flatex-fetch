@@ -228,13 +228,13 @@ func TestListDocumentsDetailed(t *testing.T) {
 		t.Fatalf("docs = %v, want 2", docs)
 	}
 	d0, d1 := docs[0], docs[1]
-	if d0.Index != 0 || d0.Name != "Einladung Hauptversammlung" || d0.Category != "Hauptversammlung" || !d0.Read {
+	if d0.Index != 0 || d0.Name != "Einladung Hauptversammlung" || !d0.Read {
 		t.Errorf("docs[0] = %+v, want index 0, read Hauptversammlung doc", d0)
 	}
 	if d0.Date.Format("2006-01-02") != "2026-07-16" {
 		t.Errorf("docs[0].Date = %v, want 2026-07-16", d0.Date)
 	}
-	if d1.Index != 1 || d1.Name != "Kontoauszug vom 10.07.2026" || d1.Category != "Kontoauszug" || d1.Read {
+	if d1.Index != 1 || d1.Name != "Kontoauszug vom 10.07.2026" || d1.Read {
 		t.Errorf("docs[1] = %+v, want index 1, unread Kontoauszug doc", d1)
 	}
 	if d1.Date.Format("2006-01-02") != "2026-07-10" {

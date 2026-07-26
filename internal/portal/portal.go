@@ -516,14 +516,13 @@ type Document struct {
 	Index      int
 	Name       string
 	Date       time.Time
-	Category   string
 	Read       bool
 	WindowFrom time.Time
 	WindowTo   time.Time
 }
 
 // ListDocumentsDetailed returns every archived document's metadata in
-// [from, to] — name, date, category, and read status — for a list-only
+// [from, to] — name, date, and read status — for a list-only
 // view, splitting the range further (see windowedDocuments) whenever a
 // query comes back capped or empty so a wide request doesn't silently
 // come back truncated. flatex-next sessions (see Login) use a different
@@ -638,9 +637,6 @@ func parseDocuments(rowsHTML string) []Document {
 			if t, err := time.Parse("02.01.2006", strings.TrimSpace(dm[1])); err == nil {
 				doc.Date = t
 			}
-		}
-		if cm := reDocCategory.FindStringSubmatch(row); cm != nil {
-			doc.Category = html.UnescapeString(strings.TrimSpace(cm[1]))
 		}
 		if nm := reDocName.FindStringSubmatch(row); nm != nil {
 			doc.Name = html.UnescapeString(strings.TrimSpace(nm[1]))

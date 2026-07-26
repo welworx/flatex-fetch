@@ -13,7 +13,7 @@ var templateTokenRe = regexp.MustCompile(`<([^>]+)>`)
 // validTemplateToken matches the token names renderPathTemplate knows how to
 // substitute. "date" alone or "date <layout>" (layout using YYYY/MM/DD
 // placeholders) are both accepted.
-var validTemplateToken = regexp.MustCompile(`^(profile|type|filename|original filename|org filename|date|date .+)$`)
+var validTemplateToken = regexp.MustCompile(`^(profile|filename|original filename|org filename|date|date .+)$`)
 
 // validatePathTemplate rejects unrecognized <token> placeholders in a
 // -format template so a typo fails fast at flag-parse time instead of
@@ -28,25 +28,23 @@ func validatePathTemplate(tmpl string) error {
 }
 
 // renderPathTemplate substitutes tmpl's <token> placeholders using profile,
-// docType, date, and filenameStem (the resolved document filename with its
+// date, and filenameStem (the resolved document filename with its
 // extension stripped), then splits the result into a directory and base
-// filename. Recognized tokens: <profile>, <type>, <filename> (aliases
+// filename. Recognized tokens: <profile>, <filename> (aliases
 // <original filename>, <org filename>), and <date> or <date LAYOUT> where
 // LAYOUT uses YYYY/MM/DD placeholders (default YYYY-MM-DD).
-func renderPathTemplate(tmpl, profile, docType string, date time.Time, filenameStem string) (dir, name string) {
+func renderPathTemplate(tmpl, profile string, date time.Time, filenameStem string) (dir, name string) {
 	rendered := templateTokenRe.ReplaceAllStringFunc(tmpl, func(tok string) string {
-		return renderToken(tok[1:len(tok)-1], profile, docType, date, filenameStem)
+		return renderToken(tok[1:len(tok)-1], profile, date, filenameStem)
 	})
 	rendered = filepath.FromSlash(rendered)
 	return filepath.Dir(rendered), filepath.Base(rendered)
 }
 
-func renderToken(token, profile, docType string, date time.Time, filenameStem string) string {
+func renderToken(token, profile string, date time.Time, filenameStem string) string {
 	switch {
 	case token == "profile":
 		return pathSafe(profile)
-	case token == "type":
-		return pathSafe(docType)
 	case token == "filename" || token == "original filename" || token == "org filename":
 		return pathSafe(filenameStem)
 	case token == "date" || strings.HasPrefix(token, "date "):

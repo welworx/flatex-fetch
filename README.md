@@ -34,13 +34,15 @@ those PDFs into structured JSON — this tool only fetches.
   the portal actually needs, so its 100-document cap on filtered queries
   doesn't silently truncate results
 - **Configurable output paths**: `-format` templates the download path per
-  document (profile, category, date, filename), instead of the fixed
+  document (profile, date, filename), instead of the fixed
   `<profile>/<filename>` layout
 - **Download log**: every file written is appended, with metadata, to
   `<out>/.fetch-log.jsonl`
-- **Verbose progress**: `-verbose` prints date ranges queried, documents
-  found, and per-document skip/download status to stderr — useful on a
-  wide range, where otherwise nothing prints until the run finishes
+- **Verbose progress**: `-verbose` (both `fetch` and `list`) prints the
+  resolved settings in effect — including flags left at their default,
+  not just ones you passed — plus date ranges queried and documents found
+  to stderr; `fetch` also prints per-document skip/download status. Useful
+  on a wide range, where otherwise nothing prints until the run finishes
 
 ## Install
 
@@ -87,13 +89,13 @@ fetch (or list) every profile instead. When multiple profiles are processed,
 PDFs land in `~/flatex-downloads/<profile>/` (`-out` overrides), named by
 the portal's own filename. Already-downloaded files are skipped unless
 `-all` is set. Exit status is non-zero if any profile or document failed;
-a failed document's message identifies it by date/category/name (the
-portal has no stable per-document URL).
+a failed document's message identifies it by date/name (the portal has no
+stable per-document URL).
 
 Every file `fetch` writes is also appended, one JSON object per line, to
-`<out>/.fetch-log.jsonl` (time, profile, document index/date/category/name,
+`<out>/.fetch-log.jsonl` (time, profile, document index/date/name,
 local path). On later runs, a listed document whose log entry is
-unambiguous (no other document shares its date/category/name) and whose
+unambiguous (no other document shares its date/name) and whose
 file still exists on disk is skipped without contacting the portal again —
 so re-running `fetch` over an overlapping range doesn't re-pay the paced
 request cost for documents you already have. Ambiguous or stale entries
@@ -126,22 +128,21 @@ on `/` into directories:
 | Token | Value |
 |---|---|
 | `<profile>` | profile name |
-| `<type>` | document category, as shown by `list` |
 | `<filename>` (or `<original filename>`, `<org filename>`) | portal's original filename, extension stripped |
 | `<date>` | document date, `YYYY-MM-DD` |
 | `<date LAYOUT>` | document date with `LAYOUT` built from `YYYY`/`MM`/`DD` |
 
 ```
-flatex-fetch fetch -format "<type>/<date YYYY-MM-DD>/<filename>.pdf"
-# -> flatex-downloads/Kontoauszug/2026-07-16/invoice.pdf
+flatex-fetch fetch -format "<date YYYY-MM-DD>/<filename>.pdf"
+# -> flatex-downloads/2026-07-16/invoice.pdf
 
-flatex-fetch fetch -format "<profile>/<date YYYY>/<date>-<type>-<filename>.pdf"
-# -> flatex-downloads/main/2026/2026-07-16-Kontoauszug-invoice.pdf
+flatex-fetch fetch -format "<profile>/<date YYYY>/<date>-<filename>.pdf"
+# -> flatex-downloads/main/2026/2026-07-16-invoice.pdf
 ```
 
 An unrecognized `<token>` is rejected before login. Incremental skip
-(`-all` off) still applies — since category/date are stable per document,
-the rendered path is the same across runs.
+(`-all` off) still applies — since date is stable per document, the
+rendered path is the same across runs.
 
 ## Known Limitations
 

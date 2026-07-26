@@ -57,6 +57,9 @@ FETCH/LIST FLAGS
   -from YYYY-MM-DD   date range start (use with -to; overrides -days)
   -to YYYY-MM-DD     date range end (use with -from)
   -user-agent UA     override the built-in browser User-Agent
+  -verbose           print progress to stderr: resolved settings (even ones left at their
+                      default), date ranges queried, documents found; fetch also prints
+                      per-document skip/download status
   fetch also:
   -out DIR           output directory (default ~/flatex-downloads)
   -format TEMPLATE   output path template relative to -out (default <profile>/<filename>)
@@ -64,8 +67,6 @@ FETCH/LIST FLAGS
                       <out>/.fetch-log.jsonl, through today (falls back to -days if no log yet;
                       mutually exclusive with -days/-from/-to)
   -all               re-download documents that already exist locally
-  -verbose           print progress to stderr: date ranges queried, documents found,
-                      per-document skip/download status
   list also:
   -csv               output CSV instead of a table
   -json              output JSON instead of a table
@@ -79,24 +80,23 @@ FORMAT TEMPLATE
   -format takes a path template with <token> placeholders, substituted per
   document and split on "/" into directories:
     <profile>       profile name
-    <type>          document category, as shown by 'list'
     <filename>      portal's original filename, extension stripped
                     (aliases: <original filename>, <org filename>)
     <date>          document date, YYYY-MM-DD
     <date LAYOUT>   document date with LAYOUT built from YYYY/MM/DD
 
-  Example: -format "<type>/<date YYYY-MM-DD>/<filename>.pdf"
-    -> flatex-downloads/Kontoauszug/2026-07-16/invoice.pdf
+  Example: -format "<date YYYY-MM-DD>/<filename>.pdf"
+    -> flatex-downloads/2026-07-16/invoice.pdf
 
-  Example: -format "<profile>/<date YYYY>/<date>-<type>-<filename>.pdf"
-    -> flatex-downloads/main/2026/2026-07-16-Kontoauszug-invoice.pdf
+  Example: -format "<profile>/<date YYYY>/<date>-<filename>.pdf"
+    -> flatex-downloads/main/2026/2026-07-16-invoice.pdf
 
 DOWNLOAD LOG
   Every file fetch writes is also appended, one JSON object per line, to
-  <out>/.fetch-log.jsonl: time, profile, document index/date/category/name,
+  <out>/.fetch-log.jsonl: time, profile, document index/date/name,
   and the local path. On a later run, a listed document is skipped without
   contacting the portal again if the log has exactly one matching entry
-  (by date/category/name) and its file still exists on disk; an ambiguous
+  (by date/name) and its file still exists on disk; an ambiguous
   or stale log entry falls back to fetching normally. -all bypasses this
   and the on-disk check both.
 

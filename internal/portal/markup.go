@@ -116,11 +116,12 @@ var (
 	// also a "Gelesen am"/read-date column, C5, but the class is simpler).
 	reDocRow = regexp.MustCompile(`<tr class="([^"]*)" id="TID\d+_(\d+)-\d+"`)
 
-	// reDocDate/reDocCategory/reDocName match the Datum/Dokumententyp/
-	// Beschreibung cells (C2/C3/C4) within a single row's HTML slice.
-	reDocDate     = regexp.MustCompile(`class="C2[^"]*"[^>]*>([^<]*)</td>`)
-	reDocCategory = regexp.MustCompile(`class="C3[^"]*"[^>]*><div class="Ellipsis">([^<]*)</div>`)
-	reDocName     = regexp.MustCompile(`class="C4[^"]*"[^>]*><div class="Ellipsis">([^<]*)</div>`)
+	// reDocDate/reDocName match the Datum/Beschreibung cells (C2/C4) within
+	// a single row's HTML slice. The Dokumententyp cell (C3) is deliberately
+	// not parsed — flatex-next has no per-document-type equivalent, so
+	// Document no longer carries a category field for either UI.
+	reDocDate = regexp.MustCompile(`class="C2[^"]*"[^>]*>([^<]*)</td>`)
+	reDocName = regexp.MustCompile(`class="C4[^"]*"[^>]*><div class="Ellipsis">([^<]*)</div>`)
 )
 
 // capWarning is the literal UI text the portal shows when a listing's

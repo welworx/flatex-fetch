@@ -44,6 +44,30 @@ func dateRange(days int, from, to string, now time.Time) (time.Time, time.Time, 
 	return f, t, nil
 }
 
+// orDefault labels a flag value as "(default)" when it's empty, so a
+// -verbose settings summary shows what's actually in effect even when the
+// user never passed the flag — not just what they explicitly set.
+func orDefault(val, label string) string {
+	if val != "" {
+		return val
+	}
+	return label + " (default)"
+}
+
+// rangeDescription renders the resolved [from, to] for a -verbose settings
+// summary, labeling which flag combination produced it.
+func rangeDescription(days int, from, to time.Time, explicitRange, sinceLast bool) string {
+	r := fmt.Sprintf("%s..%s", from.Format("2006-01-02"), to.Format("2006-01-02"))
+	switch {
+	case sinceLast:
+		return "since last fetch per profile, through today (falls back to -days " + fmt.Sprint(days) + " if no log yet)"
+	case explicitRange:
+		return r + " (explicit -days/-from/-to)"
+	default:
+		return r + fmt.Sprintf(" (last %d days, default)", days)
+	}
+}
+
 // resolveProfilesAndCreds selects the profile(s) named by -profile/
 // -all-profiles and decrypts stored credentials. Callers must validate
 // -profile/-all-profiles aren't both set themselves first (see
@@ -111,7 +135,7 @@ func runFetch(args []string) int {
 	profileName := fs.String("profile", "", "profile to fetch (default: first configured profile)")
 	allProfiles := fs.Bool("all-profiles", false, "fetch every configured profile")
 	out := fs.String("out", "", "output directory (default ~/flatex-downloads)")
-	format := fs.String("format", "", `output path template relative to -out, e.g. "<type>/<date YYYY-MM-DD>/<filename>.pdf" (default: <profile>/<filename>, the portal's own name)`)
+	format := fs.String("format", "", `output path template relative to -out, e.g. "<date YYYY-MM-DD>/<filename>.pdf" (default: <profile>/<filename>, the portal's own name)`)
 	userAgent := fs.String("user-agent", "", "override the built-in browser User-Agent")
 	days := fs.Int("days", 7, "fetch documents from the last N days")
 	fromFlag := fs.String("from", "", "start date YYYY-MM-DD (with -to; overrides -days)")
@@ -166,6 +190,13 @@ func runFetch(args []string) int {
 		return 1
 	}
 
+	if *verbose {
+		fmt.Fprintf(os.Stderr, "settings: out=%s format=%s range=%s all=%t since-last=%t user-agent=%s\n",
+			*out, orDefault(*format, "<profile>/<filename> (portal's own name)"),
+			rangeDescription(*days, from, to, explicitRange, *sinceLast),
+			*all, *sinceLast, orDefault(*userAgent, "(built-in browser UA)"))
+	}
+
 	failed := false
 	for _, p := range profiles {
 		if err := fetchProfile(p, creds[p.Name], *out, *format, *userAgent, from, to, *sinceLast, *all, *verbose); err != nil {
@@ -182,24 +213,24 @@ func runFetch(args []string) int {
 // describeDocument identifies a document in an error message. The portal
 // has no stable per-document URL (a download is triggered by POSTing the
 // row index within the same session, not by fetching a fixed link), so
-// date/category/name — everything visible in the portal's own archive
-// table — is the closest identifying handle available.
+// date/name — visible in the portal's own archive table on both UIs — is
+// the closest identifying handle available.
 func describeDocument(d portal.Document) string {
-	return fmt.Sprintf("row %d (%s, %s, %q)", d.Index, d.Date.Format("2006-01-02"), d.Category, d.Name)
+	return fmt.Sprintf("row %d (%s, %q)", d.Index, d.Date.Format("2006-01-02"), d.Name)
 }
 
 // documentPathResolver builds the portal.ResolvePath used for one
 // document's download. With no -format, it reproduces the historical
 // layout: out/profile/<portal filename>. With -format, the template is
-// rendered using the document's profile/type/date plus its resolved
-// filename (extension stripped, since templates supply their own).
+// rendered using the document's profile/date plus its resolved filename
+// (extension stripped, since templates supply their own).
 func documentPathResolver(out, format, profile string, d portal.Document) portal.ResolvePath {
 	return func(origName string) (string, string) {
 		if format == "" {
 			return filepath.Join(out, profile), origName
 		}
 		stem := strings.TrimSuffix(origName, filepath.Ext(origName))
-		dir, name := renderPathTemplate(format, profile, d.Category, d.Date, stem)
+		dir, name := renderPathTemplate(format, profile, d.Date, stem)
 		return filepath.Join(out, dir), name
 	}
 }
@@ -239,7 +270,7 @@ func fetchProfile(p config.Profile, password, out, format, userAgent string, fro
 		to = time.Now()
 	}
 	if verbose {
-		fmt.Fprintf(os.Stderr, "profile %s: listing documents %s..%s\n", p.Name, from.Format("2006-01-02"), to.Format("2006-01-02"))
+		fmt.Fprintf(os.Stderr, "profile %s (domain %s): listing documents %s..%s\n", p.Name, p.Domain, from.Format("2006-01-02"), to.Format("2006-01-02"))
 	}
 	docs, err := c.ListDocumentsDetailed(from, to)
 	if err != nil {

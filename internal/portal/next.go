@@ -230,10 +230,7 @@ func hasDocIndex(docs []Document, idx int) bool {
 // tracking the most recent date-group header and attaching it to every
 // entry until the next one — flatex-next groups entries under per-date
 // headers rather than giving each row its own date column (unlike the old
-// UI's flat table, see reDocDate). Category isn't parsed: no per-entry
-// category text was found in the captured markup, only a separate
-// category *filter* widget, so Document.Category is left empty for
-// flatex-next results.
+// UI's flat table, see reDocDate).
 func parseNextEntries(rowsHTML string) []Document {
 	matches := reNextAnyMarker.FindAllStringSubmatchIndex(rowsHTML, -1)
 	var docs []Document

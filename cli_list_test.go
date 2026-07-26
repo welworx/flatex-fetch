@@ -31,8 +31,8 @@ func TestProfileFlagsValid(t *testing.T) {
 
 func testDocs() []portal.Document {
 	return []portal.Document{
-		{Index: 0, Name: "Einladung Hauptversammlung", Date: time.Date(2026, 7, 16, 0, 0, 0, 0, time.UTC), Category: "Hauptversammlung", Read: true},
-		{Index: 1, Name: "Kontoauszug vom 10.07.2026", Date: time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC), Category: "Kontoauszug", Read: false},
+		{Index: 0, Name: "Einladung Hauptversammlung", Date: time.Date(2026, 7, 16, 0, 0, 0, 0, time.UTC), Read: true},
+		{Index: 1, Name: "Kontoauszug vom 10.07.2026", Date: time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC), Read: false},
 	}
 }
 
@@ -74,7 +74,7 @@ func TestWriteDocumentsCSV(t *testing.T) {
 	if len(lines) != 3 {
 		t.Fatalf("csv lines = %d, want 3 (header + 2 rows): %s", len(lines), out)
 	}
-	if lines[0] != "profile,index,date,category,read,name" {
+	if lines[0] != "profile,index,date,read,name" {
 		t.Fatalf("csv header = %q", lines[0])
 	}
 	if !strings.HasPrefix(lines[1], "main,") || !strings.HasPrefix(lines[2], "main,") {
