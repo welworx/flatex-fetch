@@ -62,7 +62,7 @@ func TestLoginDetectsNextVariant(t *testing.T) {
 	if c.variant != variantNext {
 		t.Fatalf("variant = %v, want variantNext", c.variant)
 	}
-	if c.archiveListPath != "/"+nextDesktopSegment+"/"+archiveListAction {
+	if c.archiveListPath != "/"+nextDesktopSegment+"/"+nextArchiveAction {
 		t.Fatalf("archiveListPath = %q", c.archiveListPath)
 	}
 	if c.tokenID != "tok-next" {
@@ -110,7 +110,7 @@ func TestNextListDocumentsPaginatesUntilPlateau(t *testing.T) {
 	batch2 := batch1 + nextEntryHTML(2, "Wertpapierabrechnung", false)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /"+nextDesktopSegment+"/"+archiveListAction, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /"+nextDesktopSegment+"/"+nextArchiveAction, func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.FormValue(fieldNextOpenArchive) == "true":
 			fmt.Fprint(w, nextArchiveResponse(""))
@@ -134,7 +134,7 @@ func TestNextListDocumentsPaginatesUntilPlateau(t *testing.T) {
 
 	c := newTestClient(t, srv)
 	c.variant = variantNext
-	c.archiveListPath = "/" + nextDesktopSegment + "/" + archiveListAction
+	c.archiveListPath = "/" + nextDesktopSegment + "/" + nextArchiveAction
 
 	docs, err := c.ListDocumentsDetailed(testWindow.from, testWindow.to)
 	if err != nil {
@@ -167,7 +167,7 @@ func TestNextDownload(t *testing.T) {
 	batch := nextDateHeaderHTML("20.07.2026") + nextEntryHTML(4, "Fondsthesaurierung", true)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /"+nextDesktopSegment+"/"+archiveListAction, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /"+nextDesktopSegment+"/"+nextArchiveAction, func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.FormValue(fieldNextOpenArchive) == "true":
 			fmt.Fprint(w, nextArchiveResponse(""))
@@ -189,7 +189,7 @@ func TestNextDownload(t *testing.T) {
 
 	c := newTestClient(t, srv)
 	c.variant = variantNext
-	c.archiveListPath = "/" + nextDesktopSegment + "/" + archiveListAction
+	c.archiveListPath = "/" + nextDesktopSegment + "/" + nextArchiveAction
 	dir := t.TempDir()
 
 	p, skipped, err := c.Download(testWindow.from, testWindow.to, 4, flatResolvePath(dir), map[string]bool{}, false)

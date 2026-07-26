@@ -164,6 +164,12 @@ const (
 	// gets literal "next-desktop.at"). Unverified for flatex.de.
 	nextDesktopSegment = "next-desktop.at"
 
+	// nextArchiveAction is flatex-next's single consolidated action for the
+	// dashboard/archive dialog — confirmed live, replacing the old UI's
+	// separate documentArchiveListFormAction.do/accountOverviewFormAction.do/
+	// headerAreaFormAction.do actions.
+	nextArchiveAction = "overviewFormAction.do"
+
 	// loginCommand and loginProgressAction are new steps flatex-next inserts
 	// between the credentials POST and the old UI's direct
 	// accountOverviewFormAction.do landing: /login.at/sso 302s to

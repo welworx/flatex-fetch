@@ -360,7 +360,7 @@ func (c *Client) Login(username, password string) error {
 
 	if finalURL != nil && strings.Contains(finalURL.Path, "/"+nextDesktopSegment+"/") {
 		c.variant = variantNext
-		c.archiveListPath = "/" + nextDesktopSegment + "/" + archiveListAction
+		c.archiveListPath = "/" + nextDesktopSegment + "/" + nextArchiveAction
 		c.ajaxCommandPath = "/" + nextDesktopSegment + "/" + ajaxCommandAction
 		return c.loginNext()
 	}

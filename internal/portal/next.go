@@ -1,6 +1,7 @@
 package portal
 
 import (
+	"encoding/json"
 	"fmt"
 	"html"
 	"net/url"
@@ -31,8 +32,43 @@ func (c *Client) nextOpenArchive() error {
 		fieldNextOverviewIdx: {idxNextOverviewDefault},
 		fieldNextOpenArchive: {"true"},
 	}
-	_, err := c.postForm(c.archiveListPath, form)
+	body, err := c.postForm(c.archiveListPath, form)
+	c.logf("  open archive: %s", describeCommands(body))
 	return err
+}
+
+// describeCommands is a -verbose diagnostic: the command names in an
+// archive-endpoint response, so a live run that comes back with 0
+// documents shows whether the portal returned a real (but empty)
+// replacePortions, got stuck on a repeated fullPageReplace, or something
+// else entirely — see nextListDocuments/next.go's verification-status note.
+// Any command whose name isn't one this package already understands is
+// dumped in full (raw JSON, not just the known Location/Script fields),
+// since an unrecognized command's exact field names are, by definition,
+// not yet in the ajaxCommand struct.
+func describeCommands(body string) string {
+	var raw struct {
+		Commands []map[string]any `json:"commands"`
+	}
+	if err := json.Unmarshal([]byte(body), &raw); err != nil {
+		return fmt.Sprintf("unparseable response (%d bytes)", len(body))
+	}
+	known := map[string]bool{
+		"replacePortions": true, "execute": true, "updateUrl": true,
+		"updateResources": true, "fullPageReplace": true, "download": true,
+		"executeServerCommand": true, "updateHistorySize": true,
+	}
+	var parts []string
+	for _, cmd := range raw.Commands {
+		name, _ := cmd["command"].(string)
+		if known[name] {
+			parts = append(parts, name)
+			continue
+		}
+		full, _ := json.Marshal(cmd)
+		parts = append(parts, string(full))
+	}
+	return fmt.Sprintf("%d command(s): %s", len(raw.Commands), strings.Join(parts, " | "))
 }
 
 // nextSetCustomDateRange switches the archive dialog to an explicit
@@ -47,15 +83,21 @@ func (c *Client) nextSetCustomDateRange(from, to time.Time) (string, error) {
 		fieldNextDateRangeIdx:    {idxNextDateRangeDefault},
 		fieldNextDateRangeCustom: {"true"},
 	}
-	if _, err := c.postForm(c.archiveListPath, open); err != nil {
+	openBody, err := c.postForm(c.archiveListPath, open)
+	if err != nil {
 		return "", fmt.Errorf("opening custom date range: %w", err)
 	}
+	c.logf("  open custom date range: %s", describeCommands(openBody))
 	apply := url.Values{
 		fieldNextDateStart: {from.Format("02.01.2006")},
 		fieldNextDateEnd:   {to.Format("02.01.2006")},
 		fieldNextDateApply: {"true"},
 	}
-	return c.postForm(c.archiveListPath, apply)
+	body, err := c.postForm(c.archiveListPath, apply)
+	if err == nil {
+		c.logf("  apply date range: %s", describeCommands(body))
+	}
+	return body, err
 }
 
 // nextScrollStep is how much fieldNextScrollPos advances per pagination
@@ -85,6 +127,7 @@ func (c *Client) nextListDocuments(from, to time.Time) ([]Document, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list %s..%s: %w", from.Format("02.01.2006"), to.Format("02.01.2006"), err)
 	}
+	c.logf("  parsed %d document(s) from initial response", len(docs))
 
 	for scrollPos := nextScrollStep; ; scrollPos += nextScrollStep {
 		form := url.Values{
