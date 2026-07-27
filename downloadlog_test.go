@@ -112,6 +112,36 @@ func TestAlreadyLoggedAmbiguousMatch(t *testing.T) {
 	}
 }
 
+func TestLogHasPath(t *testing.T) {
+	dir := t.TempDir()
+	// two distinct documents sharing a date/name (same ambiguous logKey
+	// as TestAlreadyLoggedAmbiguousMatch), each already logged under its
+	// own path.
+	d := portal.Document{Name: "Kauf", Date: time.Date(2026, 7, 15, 0, 0, 0, 0, time.UTC)}
+	pathA := filepath.Join(dir, "a.pdf")
+	pathB := filepath.Join(dir, "b.pdf")
+	if err := logDownload(dir, "main", pathA, d); err != nil {
+		t.Fatal(err)
+	}
+	if err := logDownload(dir, "main", pathB, d); err != nil {
+		t.Fatal(err)
+	}
+
+	entries, err := readDownloadLog(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !logHasPath(entries, pathA) {
+		t.Error("logHasPath = false for a path that is logged")
+	}
+	if !logHasPath(entries, pathB) {
+		t.Error("logHasPath = false for a path that is logged")
+	}
+	if logHasPath(entries, filepath.Join(dir, "c.pdf")) {
+		t.Error("logHasPath = true for a path never logged")
+	}
+}
+
 func TestLastDocumentDate(t *testing.T) {
 	dir := t.TempDir()
 	// Backfill order: an old document (2021) gets fetched AFTER (later

@@ -316,9 +316,15 @@ func fetchProfile(p config.Profile, password, out, format, userAgent string, fro
 			// Not in the log (else alreadyLogged would have skipped
 			// before ever calling Download) but already on disk, e.g.
 			// from a run before logging existed. Backfill the entry now
-			// so future runs recognize it without re-downloading.
-			if err := logDownload(out, p.Name, path, d); err != nil {
-				fmt.Fprintf(os.Stderr, "profile %s: %s: log write failed: %v\n", p.Name, describeDocument(d), err)
+			// so future runs recognize it without re-downloading — unless
+			// this exact path is already there, which happens when several
+			// documents share a date/name (logKey is ambiguous, so
+			// alreadyLogged can't match) and would otherwise grow a
+			// duplicate line on every single run.
+			if !logHasPath(logEntries, path) {
+				if err := logDownload(out, p.Name, path, d); err != nil {
+					fmt.Fprintf(os.Stderr, "profile %s: %s: log write failed: %v\n", p.Name, describeDocument(d), err)
+				}
 			}
 			skipped++
 		default:
