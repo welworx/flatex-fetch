@@ -197,6 +197,22 @@ func runProfile(args []string) int {
 			return usage()
 		}
 		name := args[1]
+		ps, err := config.LoadProfiles(dir)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			return 1
+		}
+		current := -1
+		for i, p := range ps {
+			if p.Name == name {
+				current = i
+				break
+			}
+		}
+		if current == -1 {
+			fmt.Fprintf(os.Stderr, "error: no profile %q\n", name)
+			return 1
+		}
 		domain := ""
 		if len(args) >= 4 && args[2] == "-domain" {
 			domain = args[3]
@@ -204,7 +220,7 @@ func runProfile(args []string) int {
 		username := os.Getenv("FLATEX_FETCH_USERNAME")
 		if username == "" {
 			var err error
-			username, err = promptLine("New username (leave blank to keep current): ")
+			username, err = promptLine(fmt.Sprintf("New username [%s] (leave blank to keep): ", ps[current].Username))
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "error:", err)
 				return 1
