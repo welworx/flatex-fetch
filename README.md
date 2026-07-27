@@ -52,7 +52,8 @@ fetch → parse pipeline.
 
     go install github.com/welworx/flatex-fetch@latest
 
-or grab a release binary (darwin/linux/windows, amd64/arm64).
+or grab a [release binary](https://github.com/welworx/flatex-fetch/releases/latest)
+(darwin/linux/windows, amd64/arm64).
 
 ## Setup
 
