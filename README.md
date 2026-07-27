@@ -8,9 +8,11 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Logs into the flatex.at broker web portal and downloads new documents
-(trade confirmations, dividend notices, …) as raw PDFs. Companion to
+(trade confirmations, dividend notices, …) as raw PDFs — headless, so it
+drops into cron jobs, CI, or an AI agent's toolchain as-is. Companion to
 [flatex-pdf-cli](https://github.com/welworx/flatex-pdf-cli), which parses
-those PDFs into structured JSON — this tool only fetches.
+those PDFs into structured JSON — chain the two for a fully automated
+fetch → parse pipeline.
 
 > **Disclaimer:** Built for **personal, educational use only.** This is an
 > independent, unofficial tool, not affiliated with, endorsed by, or
@@ -21,6 +23,10 @@ those PDFs into structured JSON — this tool only fetches.
 
 ## Features
 
+- **Automation-ready**: no interactive prompts (env-var credentials),
+  machine-readable output (`list -json`/`-csv`), and exit codes scripts can
+  branch on — run unattended from cron/CI, or chain into
+  [flatex-pdf-cli](https://github.com/welworx/flatex-pdf-cli)
 - **Encrypted credentials**: portal password stored locally with
   argon2id + AES-256-GCM, unlocked by a master passphrase (prompt or env var)
 - **Multi-profile**: manage several portal logins (`profile add|list|remove`)
@@ -90,19 +96,16 @@ PDFs land in `~/flatex-downloads/<profile>/` (`-out` overrides), named by
 the portal's own filename. Already-downloaded files are skipped unless
 `-all` is set. Exit status is non-zero if any profile or document failed;
 a failed document's message identifies it by date/name (the portal has no
-stable per-document URL).
+stable per-document URL). `-user-agent` overrides the built-in browser
+User-Agent string.
 
 Every file `fetch` writes is also appended, one JSON object per line, to
 `<out>/.fetch-log.jsonl` (time, profile, document index/date/name,
 local path). On later runs, a listed document whose log entry is
 unambiguous (no other document shares its date/name) and whose
-file still exists on disk is skipped without contacting the portal again —
-so re-running `fetch` over an overlapping range doesn't re-pay the paced
-request cost for documents you already have. Ambiguous or stale entries
-just fall back to the normal fetch-then-check-disk path. `-all` bypasses
-both the log and the on-disk check.
-
-`-user-agent` overrides the built-in browser User-Agent string.
+file still exists on disk is skipped without contacting the portal again.
+Ambiguous or stale entries fall back to the normal fetch-then-check-disk
+path. `-all` bypasses both the log and the on-disk check.
 
     # check GitHub for a newer release, and install it
     flatex-fetch upgrade
@@ -148,11 +151,8 @@ rendered path is the same across runs.
 
 - flatex.at only; flatex.de is untested (`-domain` exists but unverified).
 - No 2FA handling — document access currently doesn't require it.
-- A custom date-range filter caps the portal's own results at 100
-  documents — not always with a UI warning to detect, so this is caught by
-  row count too — and a too-wide range can silently return nothing at all
-  instead. `fetch`/`list` work around both by adaptively splitting a wide
-  range into as many sub-windows as the portal actually needs.
+- The portal caps filtered queries at 100 documents (see "Flexible date
+  ranges" under Features for how this is worked around).
 - Both the classic portal UI and the newer "flatex-next" UI
   (`next-desktop.at`) are supported — auto-detected at login, no flag
   needed. Confirmed working against a real flatex-next account
@@ -166,35 +166,6 @@ flatex.at account (2026-07-16), including windowed listing across a wide
 date range (2026-07-21: 235 documents from a year, correctly split into 4
 sub-windows).
 
-## Development
-
-### Running Tests
-
-```bash
-go test ./...                 # unit tests (httptest mock backend, no real account)
-go test -race ./...           # what CI runs
-FLATEX_E2E_USER=... FLATEX_E2E_PASS=... go test -tags e2e ./internal/portal/   # live portal, manual only
-```
-
-### Code Quality
-
-The project uses `golangci-lint` for linting. Configuration is in `.golangci.yml`.
-
-```bash
-gofmt -l .        # check formatting
-go vet ./...
-golangci-lint run
-```
-
-### Pre-commit Hooks
-
-Optional: `.pre-commit-config.yaml` runs `go fmt`, `go vet`, and `go test` on commit.
-
-```bash
-pip install pre-commit
-pre-commit install
-```
-
 ## Dependencies
 
 - [golang.org/x/crypto](https://pkg.go.dev/golang.org/x/crypto) — argon2id + AES-256-GCM credential encryption
@@ -206,12 +177,9 @@ Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-The code is licensed under the [MIT License](LICENSE): you're free to read,
-modify, and redistribute it, provided the copyright notice is retained, and
-it comes with no warranty (see the LICENSE file for the full text). That
-license covers the code itself — it is not permission to use this tool
-against flatex's live portal. This project is intended for **personal,
-educational use only**; see [Disclaimer](#disclaimer) for the use
+The code is licensed under the [MIT License](LICENSE) — free to read,
+modify, and redistribute with the copyright notice retained and no warranty.
+That covers the code itself only; see [Disclaimer](#disclaimer) for use
 restrictions and risk.
 
 ## Support
