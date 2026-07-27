@@ -34,3 +34,15 @@ func TestLoadProfilesMissingFile(t *testing.T) {
 		t.Fatalf("missing file: got %v, %v; want nil, nil", got, err)
 	}
 }
+
+func TestDirRespectsConfigDirOverride(t *testing.T) {
+	want := filepath.Join(t.TempDir(), "custom")
+	t.Setenv("FLATEX_FETCH_CONFIG_DIR", want)
+	got, err := Dir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("Dir() = %q, want %q", got, want)
+	}
+}

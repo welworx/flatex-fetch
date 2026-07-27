@@ -16,8 +16,15 @@ type Profile struct {
 	Domain   string `json:"domain"`
 }
 
-// Dir returns the config directory (not created yet).
+// Dir returns the config directory (not created yet). Honors
+// FLATEX_FETCH_CONFIG_DIR when set, so profiles.json/credentials.enc can
+// live somewhere other than the OS default — profiles.json holds usernames
+// and domains in plaintext, which some setups want off the default disk
+// location entirely (e.g. an encrypted volume).
 func Dir() (string, error) {
+	if d := os.Getenv("FLATEX_FETCH_CONFIG_DIR"); d != "" {
+		return d, nil
+	}
 	base, err := os.UserConfigDir()
 	if err != nil {
 		return "", err

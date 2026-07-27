@@ -1,8 +1,11 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/welworx/flatex-fetch/internal/config"
 )
 
 // isolateConfigDir points config.Dir() at a fresh temp directory for the
@@ -33,5 +36,32 @@ func TestRunHelp(t *testing.T) {
 		if got := run([]string{arg}); got != 0 {
 			t.Fatalf("run(%q) = %d, want 0", arg, got)
 		}
+	}
+}
+
+func TestRunConfigDirFlag(t *testing.T) {
+	isolateConfigDir(t)
+	t.Setenv("FLATEX_FETCH_CONFIG_DIR", "")
+	custom := t.TempDir()
+	t.Setenv("FLATEX_FETCH_PASSPHRASE", "pp")
+	t.Setenv("FLATEX_FETCH_USERNAME", "alice")
+	t.Setenv("FLATEX_FETCH_PASSWORD", "pw1")
+
+	if got := run([]string{"-config-dir", custom, "profile", "add", "main"}); got != 0 {
+		t.Fatalf("run(-config-dir) = %d, want 0", got)
+	}
+	if _, err := os.Stat(filepath.Join(custom, "profiles.json")); err != nil {
+		t.Fatalf("profiles.json not written under -config-dir: %v", err)
+	}
+
+	dir, err := config.Dir()
+	if err != nil || dir != custom {
+		t.Fatalf("config.Dir() = %q, %v; want %q", dir, err, custom)
+	}
+}
+
+func TestRunConfigDirFlagMissingValue(t *testing.T) {
+	if got := run([]string{"-config-dir"}); got != 2 {
+		t.Fatalf("run(-config-dir with no value) = %d, want 2", got)
 	}
 }

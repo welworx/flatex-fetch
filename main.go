@@ -13,6 +13,7 @@ func main() {
 
 func usage() int {
 	fmt.Fprintln(os.Stderr, `usage:
+  flatex-fetch [-config-dir DIR] <command> [flags]
   flatex-fetch profile add <name> -domain flatex.at
   flatex-fetch profile list
   flatex-fetch profile update <name> [-domain flatex.at]
@@ -40,7 +41,12 @@ DISCLAIMER
   this. Use is entirely at your own risk.
 
 USAGE
-  flatex-fetch <command> [flags]
+  flatex-fetch [-config-dir DIR] <command> [flags]
+
+GLOBAL FLAGS
+  -config-dir DIR    use DIR instead of the OS default config location for
+                      profiles.json/credentials.enc (same effect as
+                      FLATEX_FETCH_CONFIG_DIR; must come before <command>)
 
 COMMANDS
   profile add <name> [-domain flatex.at]   add a profile (prompts for credentials)
@@ -113,10 +119,14 @@ ENVIRONMENT
   FLATEX_FETCH_PASSWORD     portal password, see FLATEX_FETCH_USERNAME above
   FLATEX_FETCH_DOMAIN       portal domain for the FLATEX_FETCH_USERNAME/PASSWORD
                             login (default flatex.at)
+  FLATEX_FETCH_CONFIG_DIR   config directory, overriding the OS default (same as -config-dir)
 
 FILES
-  ~/.config/flatex-fetch/profiles.json      profile names, usernames, domains
-  ~/.config/flatex-fetch/credentials.enc    encrypted portal passwords
+  <config dir>/profiles.json      profile names, usernames, domains (plaintext)
+  <config dir>/credentials.enc    encrypted portal passwords
+  <config dir> defaults to the OS config location (~/.config/flatex-fetch on
+  Linux, ~/Library/Application Support/flatex-fetch on macOS); override with
+  -config-dir or FLATEX_FETCH_CONFIG_DIR
 
 EXAMPLES
   # first-time setup
@@ -149,6 +159,9 @@ EXAMPLES
 
   # fetch without a stored profile at all
   FLATEX_FETCH_USERNAME=... FLATEX_FETCH_PASSWORD=... flatex-fetch fetch
+
+  # keep profiles.json/credentials.enc off the default disk location
+  flatex-fetch -config-dir /Volumes/secure/flatex-fetch profile list
 `)
 	return 0
 }
@@ -156,6 +169,16 @@ EXAMPLES
 func run(args []string) int {
 	if len(args) == 0 {
 		return usage()
+	}
+	if args[0] == "-config-dir" {
+		if len(args) < 2 {
+			return usage()
+		}
+		os.Setenv("FLATEX_FETCH_CONFIG_DIR", args[1])
+		args = args[2:]
+		if len(args) == 0 {
+			return usage()
+		}
 	}
 	switch args[0] {
 	case "-help", "--help", "help":
