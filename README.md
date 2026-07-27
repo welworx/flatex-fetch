@@ -27,28 +27,23 @@ fetch → parse pipeline.
   machine-readable output (`list -json`/`-csv`), and exit codes scripts can
   branch on — run unattended from cron/CI, or chain into
   [flatex-pdf-cli](https://github.com/welworx/flatex-pdf-cli)
-- **Encrypted credentials**: portal password stored locally with
-  argon2id + AES-256-GCM, unlocked by a master passphrase (prompt or env var)
-- **Multi-profile**: manage several portal logins (`profile add|list|remove`)
-  and fetch one or all of them in a single run
-- **Incremental by default**: already-downloaded documents are skipped —
-  unambiguous ones without even re-contacting the portal, via the download
-  log; `-all` re-downloads everything in range
-- **Flexible date ranges**: `-days`, explicit `-from`/`-to`, or `-since-last`
-  (per profile, from its latest already-fetched document date through
-  today) — a wide range is adaptively split into as many sub-windows as
-  the portal actually needs, so its 100-document cap on filtered queries
-  doesn't silently truncate results
-- **Configurable output paths**: `-format` templates the download path per
-  document (profile, date, filename), instead of the fixed
-  `<profile>/<filename>` layout
-- **Download log**: every file written is appended, with metadata, to
-  `<out>/.fetch-log.jsonl`
-- **Verbose progress**: `-verbose` (both `fetch` and `list`) prints the
-  resolved settings in effect — including flags left at their default,
-  not just ones you passed — plus date ranges queried and documents found
-  to stderr; `fetch` also prints per-document skip/download status. Useful
-  on a wide range, where otherwise nothing prints until the run finishes
+- **Your portal password is never stored in plaintext**: encrypted locally
+  (argon2id + AES-256-GCM), unlocked by a master passphrase you set once
+- **Handles multiple accounts**: manage several portal logins
+  (`profile add|list|remove`) and fetch one or all of them in a single run
+- **Re-running never re-downloads what you already have**: already-fetched
+  documents are skipped, via the download log; `-all` forces a re-download
+- **Works over any date range, even wide ones**: `-days`, explicit
+  `-from`/`-to`, or `-since-last` (continue each profile from its newest
+  fetched document) — wide ranges are split automatically so the portal's
+  own 100-document result limit doesn't cause silently missing documents
+- **Control where files land**: `-format` templates the download path
+  per document (profile, date, filename) instead of a fixed layout
+- **Every download is logged**: `<out>/.fetch-log.jsonl` records what was
+  fetched and when, so re-runs can tell what's already on disk
+- **See what's happening on long runs**: `-verbose` (`fetch` and `list`)
+  prints resolved settings, date ranges queried, and documents found/
+  downloaded as it goes — instead of silence until the run finishes
 
 ## Install
 
