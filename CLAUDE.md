@@ -55,6 +55,22 @@ larger than ~50 documents with more suspicion than an old-UI one until
 that's been exercised — same pattern as the
 old UI's own windowing history above.
 
+**flatex.de host/segment derivation (2026-07-27, GitHub issue #11):** a
+flatex.de user hit `HTTP 404` on `banking-flatex.de/accountOverviewFormAction.do`
+— the account may be a flatex-next one that our then-hardcoded
+`next-desktop.at` detection couldn't recognize, falling through to the old
+UI's path and 404ing. Both the portal host (`konto.<domain>`, was a fixed
+`konto.flatex.at` literal) and the flatex-next segment
+(`nextDesktopSegmentFor` in `internal/portal/portal.go`, was a fixed
+`next-desktop.at` literal) are now derived from the profile's `domain`
+instead. Re-verified live against the real flatex.at + flatex-next account
+after the refactor — no regression from switching host/segment to be
+domain-derived. This assumes flatex.de mirrors flatex.at's pattern exactly
+(`konto.flatex.de`, `next-desktop.de`) — still **unconfirmed live**; no
+flatex.de account has been tested against this. If the issue reporter's
+retry still 404s, the actual redirect URL from his run is needed to find
+the real pattern.
+
 ## Build
 
     go build -o flatex-fetch
