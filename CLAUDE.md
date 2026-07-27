@@ -63,7 +63,9 @@ UI's path and 404ing. Both the portal host (`konto.<domain>`, was a fixed
 `konto.flatex.at` literal) and the flatex-next segment
 (`nextDesktopSegmentFor` in `internal/portal/portal.go`, was a fixed
 `next-desktop.at` literal) are now derived from the profile's `domain`
-instead. This assumes flatex.de mirrors flatex.at's pattern exactly
+instead. Re-verified live against the real flatex.at + flatex-next account
+after the refactor — no regression from switching host/segment to be
+domain-derived. This assumes flatex.de mirrors flatex.at's pattern exactly
 (`konto.flatex.de`, `next-desktop.de`) — still **unconfirmed live**; no
 flatex.de account has been tested against this. If the issue reporter's
 retry still 404s, the actual redirect URL from his run is needed to find
