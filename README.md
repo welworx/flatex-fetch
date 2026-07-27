@@ -61,16 +61,25 @@ or grab a [release binary](https://github.com/welworx/flatex-fetch/releases/late
 
 Prompts for your portal username and password. The password is stored in
 `~/.config/flatex-fetch/credentials.enc`, encrypted (argon2id + AES-256-GCM)
-with a master passphrase you set on first use. For cron/scripting, provide
-the passphrase via the `FLATEX_FETCH_PASSPHRASE` environment variable, and
-the portal username/password via `FLATEX_FETCH_USERNAME`/
-`FLATEX_FETCH_PASSWORD` to skip the interactive prompts.
+with a master passphrase you set on first use.
+
+For cron/CI, every prompt above can be skipped with environment variables
+instead — see [Environment Variables](#environment-variables).
+
+## Environment Variables
+
+| Variable | Purpose |
+|---|---|
+| `FLATEX_FETCH_PASSPHRASE` | `credentials.enc` master passphrase — skips the prompt |
+| `FLATEX_FETCH_USERNAME` | Portal username. For `profile add`, skips the prompt. For `fetch`/`list`, combined with `FLATEX_FETCH_PASSWORD`, see below |
+| `FLATEX_FETCH_PASSWORD` | Portal password — see `FLATEX_FETCH_USERNAME` |
+| `FLATEX_FETCH_DOMAIN` | Portal domain for `FLATEX_FETCH_USERNAME`/`PASSWORD` logins (default `flatex.at`) |
 
 `fetch`/`list` also accept `FLATEX_FETCH_USERNAME`/`FLATEX_FETCH_PASSWORD`
-directly, skipping `profile add` and profiles.json entirely — useful for
-cron/CI without a stored profile. `-profile`/`-all-profiles` are ignored in
-that mode; the portal domain defaults to `flatex.at`, overridable via
-`FLATEX_FETCH_DOMAIN`.
+directly, skipping `profile add` and `profiles.json` entirely — useful for
+cron/CI without a stored profile. In that mode `-profile`/`-all-profiles`
+are ignored, and the portal domain defaults to `flatex.at` unless
+overridden by `FLATEX_FETCH_DOMAIN`.
 
 ## Usage
 
