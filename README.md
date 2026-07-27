@@ -23,20 +23,21 @@ fetch → parse pipeline.
 
 ## Features
 
-- **Automation-ready**: no interactive prompts (env-var credentials),
-  machine-readable output (`list -json`/`-csv`), and exit codes scripts can
-  branch on — run unattended from cron/CI, or chain into
-  [flatex-pdf-cli](https://github.com/welworx/flatex-pdf-cli)
-- **Your portal password is never stored in plaintext**: encrypted locally
-  (argon2id + AES-256-GCM), unlocked by a master passphrase you set once
-- **Handles multiple accounts**: manage several portal logins
-  (`profile add|list|remove`) and fetch one or all of them in a single run
+- **Downloads your flatex documents as PDFs**: trade confirmations,
+  dividend notices, and the rest of your document archive, pulled straight
+  from the portal
 - **Re-running never re-downloads what you already have**: already-fetched
   documents are skipped, via the download log; `-all` forces a re-download
 - **Works over any date range, even wide ones**: `-days`, explicit
   `-from`/`-to`, or `-since-last` (continue each profile from its newest
   fetched document) — wide ranges are split automatically so the portal's
   own 100-document result limit doesn't cause silently missing documents
+- **Handles multiple accounts**: manage several portal logins
+  (`profile add|list|remove`) and fetch one or all of them in a single run
+- **Automation-ready**: no interactive prompts (env-var credentials),
+  machine-readable output (`list -json`/`-csv`), and exit codes scripts can
+  branch on — run unattended from cron/CI, or chain into
+  [flatex-pdf-cli](https://github.com/welworx/flatex-pdf-cli)
 - **Control where files land**: `-format` templates the download path
   per document (profile, date, filename) instead of a fixed layout
 - **Every download is logged**: `<out>/.fetch-log.jsonl` records what was
@@ -44,6 +45,8 @@ fetch → parse pipeline.
 - **See what's happening on long runs**: `-verbose` (`fetch` and `list`)
   prints resolved settings, date ranges queried, and documents found/
   downloaded as it goes — instead of silence until the run finishes
+- **Your portal password is never stored in plaintext**: encrypted locally
+  (argon2id + AES-256-GCM), unlocked by a master passphrase you set once
 
 ## Install
 
