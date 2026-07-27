@@ -5,12 +5,17 @@ disclaimer](README.md#disclaimer)), but fixes and improvements are welcome.
 
 ## Before opening a PR
 
-1. Tests pass: `go test -race ./...`
+1. Tests pass: `go test -race ./...` (what CI runs)
 2. Code is formatted: `gofmt -l .` is empty
-3. Linter passes: `golangci-lint run`
+3. `go vet ./...` is clean
+4. Linter passes: `golangci-lint run` (config in `.golangci.yml`)
 
-`.pre-commit-config.yaml` runs all three on commit if you want them enforced
+`.pre-commit-config.yaml` runs all four on commit if you want them enforced
 automatically (`pip install pre-commit && pre-commit install`).
+
+Live-portal e2e tests (`FLATEX_E2E_USER=... FLATEX_E2E_PASS=... go test -tags
+e2e ./internal/portal/`) are manual only, not required for a PR — useful if
+you're touching portal interaction, see Scope below.
 
 ## Scope
 

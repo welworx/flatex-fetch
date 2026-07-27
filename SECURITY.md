@@ -6,6 +6,12 @@ Only the latest release is supported. This is a personal, educational-use
 project (see the [README disclaimer](README.md#disclaimer)) with no formal
 support commitment.
 
+## Automated Scanning
+
+CodeQL scans every push/PR to `main` (badge on the README). Dependabot opens
+weekly update PRs for Go modules and GitHub Actions (`.github/dependabot.yml`).
+Neither replaces a real audit — report anything they miss below.
+
 ## Reporting a Vulnerability
 
 Please **do not** open a public GitHub issue for security vulnerabilities
