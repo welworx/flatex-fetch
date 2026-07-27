@@ -44,13 +44,14 @@ const (
 
 type Client struct {
 	hc                  *http.Client
-	baseURL             string // https://konto.flatex.at; tests point this at httptest
+	baseURL             string // https://konto.<domain>; tests point this at httptest
 	ua                  string
 	delay               time.Duration                    // requestDelay; tests set 0
 	archiveListPath     string                           // /banking-<domain>/documentArchiveListFormAction.do, repointed to flatex-next's overviewFormAction.do once detected
 	accountOverviewPath string                           // /banking-<domain>/accountOverviewFormAction.do
 	headerAreaPath      string                           // /banking-<domain>/headerAreaFormAction.do
 	ajaxCommandPath     string                           // /banking-<domain>/ajaxCommandServlet, repointed to flatex-next's once detected
+	nextDesktopSegment  string                           // e.g. "next-desktop.at"; see nextDesktopSegmentFor
 	tokenID             string                           // server-issued, extracted from response bodies
 	windowID            string                           // client-generated once per Client, not server-issued
 	variant             uiVariant                        // set by Login once the post-credentials redirect lands
@@ -67,9 +68,10 @@ func (c *Client) logf(format string, args ...any) {
 }
 
 // New returns a client for a portal domain like "flatex.at" (default and
-// only verified target; "flatex.de" is accepted but untested — only the
-// banking-app path segment embeds domain, the host itself is always
-// portalHost). An empty userAgent selects the built-in browser default.
+// only verified target; "flatex.de" is accepted but untested). Both the
+// host and flatex-next's path segment are derived from domain — see
+// portalHostPrefix and nextDesktopSegmentFor. An empty userAgent selects
+// the built-in browser default.
 func New(domain, userAgent string) (*Client, error) {
 	jar, err := cookiejar.New(nil)
 	if err != nil {
@@ -80,15 +82,26 @@ func New(domain, userAgent string) (*Client, error) {
 	}
 	return &Client{
 		hc:                  &http.Client{Jar: jar, Timeout: 60 * time.Second},
-		baseURL:             "https://" + portalHost,
+		baseURL:             "https://" + portalHostPrefix + domain,
 		ua:                  userAgent,
 		delay:               requestDelay,
 		archiveListPath:     "/banking-" + domain + "/" + archiveListAction,
 		accountOverviewPath: "/banking-" + domain + "/" + accountOverviewAction,
 		headerAreaPath:      "/banking-" + domain + "/" + headerAreaAction,
 		ajaxCommandPath:     "/banking-" + domain + "/" + ajaxCommandAction,
+		nextDesktopSegment:  nextDesktopSegmentFor(domain),
 		windowID:            newWindowID(),
 	}, nil
+}
+
+// nextDesktopSegmentFor derives flatex-next's banking-app path segment from
+// the profile's domain. Confirmed live only for domain "flatex.at", which
+// lands on segment "next-desktop.at" — i.e. "flatex" swapped for
+// "next-desktop", keeping the country suffix. Whether flatex-next on
+// flatex.de follows the same pattern ("next-desktop.de") is an assumption,
+// not yet confirmed live.
+func nextDesktopSegmentFor(domain string) string {
+	return strings.Replace(domain, "flatex", "next-desktop", 1)
 }
 
 // newWindowID mimics the portal's own client-side window-id generator
@@ -361,10 +374,10 @@ func (c *Client) Login(username, password string) error {
 		return errors.New("login: no session cookie granted (wrong credentials?)")
 	}
 
-	if finalURL != nil && strings.Contains(finalURL.Path, "/"+nextDesktopSegment+"/") {
+	if finalURL != nil && strings.Contains(finalURL.Path, "/"+c.nextDesktopSegment+"/") {
 		c.variant = variantNext
-		c.archiveListPath = "/" + nextDesktopSegment + "/" + nextArchiveAction
-		c.ajaxCommandPath = "/" + nextDesktopSegment + "/" + ajaxCommandAction
+		c.archiveListPath = "/" + c.nextDesktopSegment + "/" + nextArchiveAction
+		c.ajaxCommandPath = "/" + c.nextDesktopSegment + "/" + ajaxCommandAction
 		return c.loginNext()
 	}
 
@@ -397,7 +410,7 @@ func (c *Client) loginNext() error {
 	if err := c.engineStartUp(); err != nil {
 		return fmt.Errorf("login (flatex-next): %w", err)
 	}
-	if _, err := c.getAjaxFollowingReplace("/" + nextDesktopSegment + "/" + loginProgressAction); err != nil {
+	if _, err := c.getAjaxFollowingReplace("/" + c.nextDesktopSegment + "/" + loginProgressAction); err != nil {
 		return fmt.Errorf("login (flatex-next): loading dashboard shell: %w", err)
 	}
 	if c.tokenID == "" {

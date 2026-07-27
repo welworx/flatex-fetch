@@ -11,6 +11,11 @@ import (
 	"time"
 )
 
+// nextDesktopSegment is the flatex-next path segment these fixtures emulate,
+// matching what newTestClient's domain ("flatex.at") derives via
+// nextDesktopSegmentFor.
+const nextDesktopSegment = "next-desktop.at"
+
 // TestLoginDetectsNextVariant exercises the full flatex-next login sequence
 // captured live 2026-07-26: the /login.at/sso POST's redirect chain lands
 // on next-desktop.at, which Login must detect, then the resumeLogin

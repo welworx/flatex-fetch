@@ -12,9 +12,11 @@ import "regexp"
 // "Open risk" section for the outcome record).
 
 const (
-	// portalHost is the real host for both login and the banking app — NOT
-	// www.<domain> as originally assumed. Confirmed via live capture.
-	portalHost = "konto.flatex.at"
+	// portalHostPrefix + domain gives the real host for both login and the
+	// banking app — NOT www.<domain> as originally assumed. Confirmed via
+	// live capture for flatex.at; the "konto." prefix carrying over to
+	// flatex.de is an assumption, not yet confirmed live.
+	portalHostPrefix = "konto."
 
 	pathLoginPage = "/login.at/loginIFrameFormAction.do" // GET, seeds tokenId before login
 	pathSSO       = "/login.at/sso"                      // POST, real credential submission (from the login form's own HTML)
@@ -159,12 +161,6 @@ const (
 // is only observable from where the POST /login.at/sso redirect chain
 // finally lands, which Login detects and branches on.
 const (
-	// nextDesktopSegment is flatex-next's banking-app path segment — a fixed
-	// literal like "login.at", NOT domain-parameterized like "banking-<domain>"
-	// (confirmed: the capture's account uses the flatex.at domain and still
-	// gets literal "next-desktop.at"). Unverified for flatex.de.
-	nextDesktopSegment = "next-desktop.at"
-
 	// nextArchiveAction is flatex-next's single consolidated action for the
 	// dashboard/archive dialog — confirmed live, replacing the old UI's
 	// separate documentArchiveListFormAction.do/accountOverviewFormAction.do/
