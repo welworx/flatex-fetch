@@ -50,6 +50,10 @@ fetch → parse pipeline.
 
 ## Install
 
+    brew install welworx/tap/flatex-fetch
+
+or
+
     go install github.com/welworx/flatex-fetch@latest
 
 or grab a [release binary](https://github.com/welworx/flatex-fetch/releases/latest)
