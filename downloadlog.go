@@ -108,6 +108,23 @@ func lastDocumentDate(entries map[string][]downloadLogEntry, profile string) (ti
 	return last, found
 }
 
+// logHasPath reports whether entries already contains a record for path,
+// checked directly rather than via logKey: several documents can share a
+// logKey (same date/name), making alreadyLogged refuse to match as
+// ambiguous even though this exact path was already logged — without this,
+// the backfill in cli_fetch.go would re-append a duplicate line for it on
+// every run.
+func logHasPath(entries map[string][]downloadLogEntry, path string) bool {
+	for _, group := range entries {
+		for _, e := range group {
+			if e.Path == path {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // alreadyLogged reports the local path of a previously logged download for
 // d, but only when exactly one log entry matches (several documents can
 // share the same date/name — e.g. same-day purchases with identical
