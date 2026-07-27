@@ -15,6 +15,7 @@ func usage() int {
 	fmt.Fprintln(os.Stderr, `usage:
   flatex-fetch profile add <name> -domain flatex.at
   flatex-fetch profile list
+  flatex-fetch profile update <name> [-domain flatex.at]
   flatex-fetch profile remove <name>
   flatex-fetch fetch [-profile <name>|-all-profiles] [-out DIR] [-format TEMPLATE] [-user-agent UA] [-days N | -from YYYY-MM-DD -to YYYY-MM-DD | -since-last] [-all] [-verbose]
   flatex-fetch list [-profile <name>|-all-profiles] [-user-agent UA] [-days N | -from YYYY-MM-DD -to YYYY-MM-DD] [-csv | -json]
@@ -44,6 +45,9 @@ USAGE
 COMMANDS
   profile add <name> [-domain flatex.at]   add a profile (prompts for credentials)
   profile list                             list configured profiles
+  profile update <name> [-domain flatex.at]
+                                            change a profile's username/password/domain
+                                            (prompts; blank answer keeps the current value)
   profile remove <name>                    remove a profile
   fetch [flags]                            download new documents
   list [flags]                             list documents without downloading
@@ -102,8 +106,8 @@ DOWNLOAD LOG
 
 ENVIRONMENT
   FLATEX_FETCH_PASSPHRASE   credentials.enc master passphrase (skip the prompt)
-  FLATEX_FETCH_USERNAME     portal username for 'profile add' (skip the prompt);
-                            for fetch/list, set with FLATEX_FETCH_PASSWORD to
+  FLATEX_FETCH_USERNAME     portal username for 'profile add'/'profile update' (skip the
+                            prompt); for fetch/list, set with FLATEX_FETCH_PASSWORD to
                             skip profiles.json entirely (-profile/-all-profiles
                             are ignored) and log in as "from-env" instead
   FLATEX_FETCH_PASSWORD     portal password, see FLATEX_FETCH_USERNAME above

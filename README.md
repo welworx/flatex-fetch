@@ -33,7 +33,7 @@ fetch → parse pipeline.
   fetched document) — wide ranges are split automatically so the portal's
   own 100-document result limit doesn't cause silently missing documents
 - **Handles multiple accounts**: manage several portal logins
-  (`profile add|list|remove`) and fetch one or all of them in a single run
+  (`profile add|list|update|remove`) and fetch one or all of them in a single run
 - **Automation-ready**: no interactive prompts (env-var credentials),
   machine-readable output (`list -json`/`-csv`), and exit codes scripts can
   branch on — run unattended from cron/CI, or chain into
@@ -63,6 +63,14 @@ Prompts for your portal username and password. The password is stored in
 `~/.config/flatex-fetch/credentials.enc`, encrypted (argon2id + AES-256-GCM)
 with a master passphrase you set on first use.
 
+Changed your portal password? Update the existing profile in place instead
+of removing and re-adding it:
+
+    flatex-fetch profile update main
+
+Prompts for a new username/password; leave either blank to keep its current
+value. `-domain` works the same way as `profile add`.
+
 For cron/CI, every prompt above can be skipped with environment variables
 instead — see [Environment Variables](#environment-variables).
 
@@ -71,7 +79,7 @@ instead — see [Environment Variables](#environment-variables).
 | Variable | Purpose |
 |---|---|
 | `FLATEX_FETCH_PASSPHRASE` | `credentials.enc` master passphrase — skips the prompt |
-| `FLATEX_FETCH_USERNAME` | Portal username. For `profile add`, skips the prompt. For `fetch`/`list`, combined with `FLATEX_FETCH_PASSWORD`, see below |
+| `FLATEX_FETCH_USERNAME` | Portal username. For `profile add`/`profile update`, skips the prompt. For `fetch`/`list`, combined with `FLATEX_FETCH_PASSWORD`, see below |
 | `FLATEX_FETCH_PASSWORD` | Portal password — see `FLATEX_FETCH_USERNAME` |
 | `FLATEX_FETCH_DOMAIN` | Portal domain for `FLATEX_FETCH_USERNAME`/`PASSWORD` logins (default `flatex.at`) |
 

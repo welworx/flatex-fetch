@@ -75,3 +75,42 @@ func TestProfileAddRemoveRoundTrip(t *testing.T) {
 	}
 	_ = os.Unsetenv("FLATEX_FETCH_PASSPHRASE")
 }
+
+func TestProfileUpdate(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("FLATEX_FETCH_PASSPHRASE", "pp")
+
+	if err := profileAdd(dir, "main", "flatex.at", "alice", "pw1"); err != nil {
+		t.Fatal(err)
+	}
+
+	// password-only change: username/domain stay put
+	if err := profileUpdate(dir, "main", "", "", "pw2"); err != nil {
+		t.Fatal(err)
+	}
+	ps, err := config.LoadProfiles(dir)
+	if err != nil || len(ps) != 1 || ps[0].Username != "alice" || ps[0].Domain != "flatex.at" {
+		t.Fatalf("profiles = %+v, err = %v", ps, err)
+	}
+	creds, err := config.LoadCredentials(dir, []byte("pp"))
+	if err != nil || creds["main"] != "pw2" {
+		t.Fatalf("creds = %v, err = %v", creds, err)
+	}
+
+	// username + domain change, password left alone
+	if err := profileUpdate(dir, "main", "flatex.de", "bob", ""); err != nil {
+		t.Fatal(err)
+	}
+	ps, err = config.LoadProfiles(dir)
+	if err != nil || ps[0].Username != "bob" || ps[0].Domain != "flatex.de" {
+		t.Fatalf("profiles = %+v, err = %v", ps, err)
+	}
+	creds, err = config.LoadCredentials(dir, []byte("pp"))
+	if err != nil || creds["main"] != "pw2" {
+		t.Fatalf("creds = %v, err = %v", creds, err)
+	}
+
+	if err := profileUpdate(dir, "missing", "", "", "pw3"); err == nil {
+		t.Fatal("update of nonexistent profile succeeded")
+	}
+}

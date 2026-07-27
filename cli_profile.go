@@ -74,6 +74,46 @@ func profileAdd(dir, name, domain, username, password string) error {
 	return config.SaveProfiles(dir, append(ps, config.Profile{Name: name, Username: username, Domain: domain}))
 }
 
+// profileUpdate changes an existing profile's domain/username/password.
+// Empty domain/username/password mean "leave unchanged".
+func profileUpdate(dir, name, domain, username, password string) error {
+	ps, err := config.LoadProfiles(dir)
+	if err != nil {
+		return err
+	}
+	idx := -1
+	for i, p := range ps {
+		if p.Name == name {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		return fmt.Errorf("no profile %q", name)
+	}
+	if domain != "" {
+		ps[idx].Domain = domain
+	}
+	if username != "" {
+		ps[idx].Username = username
+	}
+	if password != "" {
+		pass, err := readPassphrase(!config.CredentialsExist(dir))
+		if err != nil {
+			return err
+		}
+		creds, err := config.LoadCredentials(dir, pass)
+		if err != nil {
+			return err
+		}
+		creds[name] = password
+		if err := config.SaveCredentials(dir, pass, creds); err != nil {
+			return err
+		}
+	}
+	return config.SaveProfiles(dir, ps)
+}
+
 func profileRemove(dir, name string) error {
 	ps, err := config.LoadProfiles(dir)
 	if err != nil {
@@ -151,6 +191,39 @@ func runProfile(args []string) int {
 			return 1
 		}
 		fmt.Println("profile", name, "added")
+		return 0
+	case "update":
+		if len(args) < 2 {
+			return usage()
+		}
+		name := args[1]
+		domain := ""
+		if len(args) >= 4 && args[2] == "-domain" {
+			domain = args[3]
+		}
+		username := os.Getenv("FLATEX_FETCH_USERNAME")
+		if username == "" {
+			var err error
+			username, err = promptLine("New username (leave blank to keep current): ")
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "error:", err)
+				return 1
+			}
+		}
+		password := os.Getenv("FLATEX_FETCH_PASSWORD")
+		if password == "" {
+			pw, err := promptSecret("New portal password (leave blank to keep current): ")
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "error:", err)
+				return 1
+			}
+			password = string(pw)
+		}
+		if err := profileUpdate(dir, name, domain, username, password); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			return 1
+		}
+		fmt.Println("profile", name, "updated")
 		return 0
 	case "list":
 		ps, err := config.LoadProfiles(dir)
