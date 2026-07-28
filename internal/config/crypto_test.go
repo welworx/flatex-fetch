@@ -243,6 +243,20 @@ func TestMigrateLegacyRenameFailure(t *testing.T) {
 	}
 }
 
+func TestSaveSecretsMkdirAllError(t *testing.T) {
+	// A regular file where a path component is expected to be a directory:
+	// os.MkdirAll fails (ENOTDIR), no permission tricks needed.
+	base := t.TempDir()
+	regularFile := filepath.Join(base, "not-a-dir")
+	if err := os.WriteFile(regularFile, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(regularFile, "sub")
+	if err := SaveSecrets(dir, []byte("hunter2"), []Profile{{Name: "main", Password: "pw"}}); err == nil {
+		t.Fatal("expected error creating credentials dir under a regular file")
+	}
+}
+
 func TestDecryptCorruptShortBlob(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.MkdirAll(dir, 0o700); err != nil {
