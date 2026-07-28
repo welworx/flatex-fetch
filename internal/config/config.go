@@ -14,6 +14,7 @@ type Profile struct {
 	Name     string `json:"name"`
 	Username string `json:"username"`
 	Domain   string `json:"domain"`
+	Password string `json:"password"`
 }
 
 // Dir returns the config directory (not created yet). Honors
