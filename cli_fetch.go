@@ -68,37 +68,43 @@ func rangeDescription(days int, from, to time.Time, explicitRange, sinceLast boo
 	}
 }
 
-// resolveProfilesAndCreds selects the profile(s) named by -profile/
-// -all-profiles and decrypts stored credentials. Callers must validate
-// -profile/-all-profiles aren't both set themselves first (see
+// resolveProfiles selects the profile(s) named by -profile/-all-profiles
+// and decrypts them (including each one's stored password). Callers must
+// validate -profile/-all-profiles aren't both set themselves first (see
 // profileFlagsValid) since that's a usage error (exit 2), distinct from the
 // runtime errors here (exit 1). Shared by fetch and list, which both need
 // exactly this before talking to the portal.
 //
-// If FLATEX_FETCH_USERNAME/PASSWORD are set, profiles.json/credentials.enc
-// are skipped entirely (-profile/-all-profiles are ignored) and a single
-// synthetic "from-env" profile is used instead, for cron/CI use without a
-// stored profile.
-func resolveProfilesAndCreds(profileName string, allProfiles bool) ([]config.Profile, map[string]string, error) {
+// If FLATEX_FETCH_USERNAME/PASSWORD are set, credentials.enc is skipped
+// entirely (-profile/-all-profiles are ignored) and a single synthetic
+// "from-env" profile is used instead, for cron/CI use without a stored
+// profile.
+func resolveProfiles(profileName string, allProfiles bool) ([]config.Profile, error) {
 	if envUser, envPass := os.Getenv("FLATEX_FETCH_USERNAME"), os.Getenv("FLATEX_FETCH_PASSWORD"); envUser != "" && envPass != "" {
 		domain := os.Getenv("FLATEX_FETCH_DOMAIN")
 		if domain == "" {
 			domain = "flatex.at"
 		}
-		p := config.Profile{Name: "from-env", Username: envUser, Domain: domain}
-		return []config.Profile{p}, map[string]string{"from-env": envPass}, nil
+		return []config.Profile{{Name: "from-env", Username: envUser, Domain: domain, Password: envPass}}, nil
 	}
 
 	dir, err := config.Dir()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	profiles, err := config.LoadProfiles(dir)
+	if !config.CredentialsExist(dir) {
+		return nil, errors.New("no profiles configured (run: flatex-fetch profile add <name>)")
+	}
+	pass, err := readPassphrase(false)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
+	}
+	profiles, err := config.LoadSecrets(dir, pass)
+	if err != nil {
+		return nil, err
 	}
 	if len(profiles) == 0 {
-		return nil, nil, errors.New("no profiles configured (run: flatex-fetch profile add <name>)")
+		return nil, errors.New("no profiles configured (run: flatex-fetch profile add <name>)")
 	}
 	switch {
 	case allProfiles:
@@ -113,21 +119,12 @@ func resolveProfilesAndCreds(profileName string, allProfiles bool) ([]config.Pro
 			}
 		}
 		if !found {
-			return nil, nil, fmt.Errorf("no profile %q (run: flatex-fetch profile add %s)", profileName, profileName)
+			return nil, fmt.Errorf("no profile %q (run: flatex-fetch profile add %s)", profileName, profileName)
 		}
 	default:
 		profiles = []config.Profile{profiles[0]}
 	}
-
-	pass, err := readPassphrase(false)
-	if err != nil {
-		return nil, nil, err
-	}
-	creds, err := config.LoadCredentials(dir, pass)
-	if err != nil {
-		return nil, nil, err
-	}
-	return profiles, creds, nil
+	return profiles, nil
 }
 
 func runFetch(args []string) int {
@@ -184,7 +181,7 @@ func runFetch(args []string) int {
 		*out = filepath.Join(home, "flatex-downloads")
 	}
 
-	profiles, creds, err := resolveProfilesAndCreds(*profileName, *allProfiles)
+	profiles, err := resolveProfiles(*profileName, *allProfiles)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 1
@@ -199,7 +196,7 @@ func runFetch(args []string) int {
 
 	failed := false
 	for _, p := range profiles {
-		if err := fetchProfile(p, creds[p.Name], *out, *format, *userAgent, from, to, *sinceLast, *all, *verbose); err != nil {
+		if err := fetchProfile(p, p.Password, *out, *format, *userAgent, from, to, *sinceLast, *all, *verbose); err != nil {
 			fmt.Fprintf(os.Stderr, "profile %s: %v\n", p.Name, err)
 			failed = true
 		}

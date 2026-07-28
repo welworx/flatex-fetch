@@ -52,7 +52,7 @@ func runList(args []string) int {
 		return 2
 	}
 
-	profiles, creds, err := resolveProfilesAndCreds(*profileName, *allProfiles)
+	profiles, err := resolveProfiles(*profileName, *allProfiles)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 1
@@ -70,7 +70,7 @@ func runList(args []string) int {
 		if len(profiles) > 1 {
 			fmt.Printf("== %s ==\n", p.Name)
 		}
-		if err := listProfile(p, creds[p.Name], *userAgent, from, to, *csvOut, *jsonOut, *verbose); err != nil {
+		if err := listProfile(p, p.Password, *userAgent, from, to, *csvOut, *jsonOut, *verbose); err != nil {
 			fmt.Fprintf(os.Stderr, "profile %s: %v\n", p.Name, err)
 			failed = true
 		}

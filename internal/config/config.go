@@ -47,4 +47,3 @@ func LoadProfiles(dir string) ([]Profile, error) {
 	}
 	return ps, nil
 }
-
