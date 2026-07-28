@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,7 +10,14 @@ import (
 func TestProfilesRoundTrip(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "flatex-fetch")
 	ps := []Profile{{Name: "main", Username: "alice", Domain: "flatex.at"}}
-	if err := SaveProfiles(dir, ps); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(ps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "profiles.json"), data, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	got, err := LoadProfiles(dir)
@@ -18,13 +26,6 @@ func TestProfilesRoundTrip(t *testing.T) {
 	}
 	if len(got) != 1 || got[0] != ps[0] {
 		t.Fatalf("got %+v, want %+v", got, ps)
-	}
-	info, err := os.Stat(filepath.Join(dir, "profiles.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode().Perm() != 0o600 {
-		t.Fatalf("profiles.json mode = %o, want 600", info.Mode().Perm())
 	}
 }
 

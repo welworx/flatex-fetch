@@ -48,18 +48,3 @@ func LoadProfiles(dir string) ([]Profile, error) {
 	return ps, nil
 }
 
-func SaveProfiles(dir string, ps []Profile) error {
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return err
-	}
-	// MkdirAll doesn't tighten permissions on a pre-existing dir; credentials
-	// are stored here too, so enforce 0700 explicitly.
-	if err := os.Chmod(dir, 0o700); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(ps, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(filepath.Join(dir, "profiles.json"), data, 0o600)
-}

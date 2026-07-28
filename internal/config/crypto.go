@@ -44,50 +44,6 @@ func CredentialsExist(dir string) bool {
 	return err == nil
 }
 
-// LoadCredentials reads the legacy (version 1) password-only format.
-// Superseded by LoadSecrets; kept until cli_profile.go stops calling it.
-func LoadCredentials(dir string, passphrase []byte) (map[string]string, error) {
-	blob, err := os.ReadFile(credPath(dir))
-	if errors.Is(err, fs.ErrNotExist) {
-		return map[string]string{}, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	version, pt, err := decrypt(passphrase, blob)
-	if err != nil {
-		return nil, err
-	}
-	if version != legacyBlobVersion {
-		return nil, errors.New("credentials file corrupt or unsupported version")
-	}
-	creds := map[string]string{}
-	if err := json.Unmarshal(pt, &creds); err != nil {
-		return nil, err
-	}
-	return creds, nil
-}
-
-// SaveCredentials writes the legacy (version 1) password-only format.
-// Superseded by SaveSecrets; kept until cli_profile.go stops calling it.
-func SaveCredentials(dir string, passphrase []byte, creds map[string]string) error {
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return err
-	}
-	if err := os.Chmod(dir, 0o700); err != nil {
-		return err
-	}
-	pt, err := json.Marshal(creds)
-	if err != nil {
-		return err
-	}
-	blob, err := encrypt(passphrase, legacyBlobVersion, pt)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(credPath(dir), blob, 0o600)
-}
-
 // LoadSecrets returns every profile (name, username, domain, password)
 // stored in dir, decrypted with passphrase. A missing credentials.enc
 // returns an empty slice, no error, no decryption attempted. A version-1
