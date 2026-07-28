@@ -16,6 +16,10 @@ import (
 
 // credentials.enc layout: [1 byte version][16 salt][12 nonce][ciphertext].
 // Key = argon2id(passphrase, salt, t=1, m=64MiB, p=4, len=32); AES-256-GCM.
+// The version byte is not passed as GCM AAD, so it isn't cryptographically
+// bound to the payload — a flipped version byte just fails JSON unmarshal
+// before any write happens, so this is non-exploitable, but a future reader
+// shouldn't assume the version byte is trusted/authenticated.
 //
 // Version 1 (legacy): payload is map[string]string, profile name -> portal
 // password only. profiles.json (plaintext, name/username/domain) lived
@@ -92,7 +96,14 @@ func SaveSecrets(dir string, passphrase []byte, profiles []Profile) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(credPath(dir), blob, 0o600)
+	// Write to a temp file and rename over the real path so a crash or
+	// full disk mid-write can't leave a truncated/corrupt credentials.enc
+	// (os.Rename is atomic on POSIX, replace-on-existing on Windows).
+	tmp := credPath(dir) + ".tmp"
+	if err := os.WriteFile(tmp, blob, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, credPath(dir))
 }
 
 // migrateLegacy folds a decrypted version-1 payload (name -> password) and

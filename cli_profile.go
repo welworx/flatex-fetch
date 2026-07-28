@@ -138,6 +138,21 @@ func profileChangePassphrase(dir string) error {
 	return config.SaveSecrets(dir, newPass, secrets)
 }
 
+// parseNameDomainArgs validates the arg shape shared by `add`/`update`:
+// [name] or [name, "-domain", value]. Returns the domain override ("" if
+// none given) and whether args matched one of those two shapes.
+func parseNameDomainArgs(args []string) (domain string, ok bool) {
+	switch len(args) {
+	case 2:
+		return "", true
+	case 4:
+		if args[2] == "-domain" {
+			return args[3], true
+		}
+	}
+	return "", false
+}
+
 // runProfile handles `flatex-fetch profile <add|list|update|remove> ...`.
 func runProfile(args []string) int {
 	if len(args) == 0 {
@@ -150,13 +165,13 @@ func runProfile(args []string) int {
 	}
 	switch args[0] {
 	case "add":
-		if len(args) < 2 {
+		domain, ok := parseNameDomainArgs(args)
+		if !ok {
 			return usage()
 		}
 		name := args[1]
-		domain := "flatex.at"
-		if len(args) >= 4 && args[2] == "-domain" {
-			domain = args[3]
+		if domain == "" {
+			domain = "flatex.at"
 		}
 		username := os.Getenv("FLATEX_FETCH_USERNAME")
 		if username == "" {
@@ -183,7 +198,8 @@ func runProfile(args []string) int {
 		fmt.Println("profile", name, "added")
 		return 0
 	case "update":
-		if len(args) < 2 {
+		domain, ok := parseNameDomainArgs(args)
+		if !ok {
 			return usage()
 		}
 		name := args[1]
@@ -212,10 +228,6 @@ func runProfile(args []string) int {
 			fmt.Fprintf(os.Stderr, "error: no profile %q\n", name)
 			return 1
 		}
-		domain := ""
-		if len(args) >= 4 && args[2] == "-domain" {
-			domain = args[3]
-		}
 		username := os.Getenv("FLATEX_FETCH_USERNAME")
 		if username == "" {
 			var err error
@@ -242,6 +254,9 @@ func runProfile(args []string) int {
 		fmt.Println("profile", name, "updated")
 		return 0
 	case "list":
+		if len(args) != 1 {
+			return usage()
+		}
 		if !config.CredentialsExist(dir) {
 			return 0
 		}
@@ -260,7 +275,7 @@ func runProfile(args []string) int {
 		}
 		return 0
 	case "remove":
-		if len(args) < 2 {
+		if len(args) != 2 {
 			return usage()
 		}
 		if err := profileRemove(dir, args[1]); err != nil {
@@ -270,6 +285,9 @@ func runProfile(args []string) int {
 		fmt.Println("profile", args[1], "removed")
 		return 0
 	case "passphrase":
+		if len(args) != 1 {
+			return usage()
+		}
 		if err := profileChangePassphrase(dir); err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			return 1

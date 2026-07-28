@@ -169,15 +169,17 @@ func TestRunProfileRemoveMissing(t *testing.T) {
 	}
 }
 
-func TestProfileChangePassphraseRotatesKey(t *testing.T) {
+// TestProfileChangePassphraseGuardRequiresCredentials checks the precondition
+// profileChangePassphrase relies on (CredentialsExist(dir)) after a normal
+// profileAdd. It does not call profileChangePassphrase itself — its own
+// new-passphrase step is TTY-only; see TestSecretsSurviveRekey for the
+// actual rekey round trip.
+func TestProfileChangePassphraseGuardRequiresCredentials(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("FLATEX_FETCH_PASSPHRASE", "old-pass")
 	if err := profileAdd(dir, "main", "flatex.at", "alice", "pw1"); err != nil {
 		t.Fatal(err)
 	}
-	// profileChangePassphrase's own new-passphrase step is TTY-only (see
-	// TestSecretsSurviveRekey for the round trip it relies on) — this test
-	// only checks the CredentialsExist(dir) guard: it must exist by now.
 	if !config.CredentialsExist(dir) {
 		t.Fatal("credentials.enc should exist after profileAdd")
 	}
@@ -347,6 +349,30 @@ func TestRunProfilePassphraseNoCredentials(t *testing.T) {
 func TestRunProfileUnknownSubcommand(t *testing.T) {
 	if got := runProfile([]string{"bogus"}); got != 2 {
 		t.Fatalf("runProfile(bogus) = %d, want 2 (usage)", got)
+	}
+}
+
+// TestRunProfileRejectsLeftoverArgs covers finding 1: unrecognized/leftover
+// args after a profile subcommand must hit usage() (exit 2), not be
+// silently dropped. All of these fail on arg-shape validation before ever
+// touching credentials.enc, so none need isolateConfigDir.
+func TestRunProfileRejectsLeftoverArgs(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{"add with -config-dir leftover", []string{"add", "main", "-config-dir", "/x"}},
+		{"add with typo'd -domian flag", []string{"add", "main", "-domian", "flatex.de"}},
+		{"remove with extra arg", []string{"remove", "main", "extra"}},
+		{"list with extra arg", []string{"list", "extra"}},
+		{"passphrase with extra arg", []string{"passphrase", "extra"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := runProfile(tc.args); got != 2 {
+				t.Fatalf("runProfile(%v) = %d, want 2 (usage)", tc.args, got)
+			}
+		})
 	}
 }
 

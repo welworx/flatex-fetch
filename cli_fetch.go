@@ -124,6 +124,11 @@ func resolveProfiles(profileName string, allProfiles bool) ([]config.Profile, er
 	default:
 		profiles = []config.Profile{profiles[0]}
 	}
+	for _, p := range profiles {
+		if p.Domain == "" {
+			return nil, fmt.Errorf("profile %q has no domain (run: flatex-fetch profile update %s)", p.Name, p.Name)
+		}
+	}
 	return profiles, nil
 }
 

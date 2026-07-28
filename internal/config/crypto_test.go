@@ -48,9 +48,31 @@ func TestSecretsMissingFile(t *testing.T) {
 	}
 }
 
-// legacyFixture writes a v1-format credentials.enc directly (bypassing
-// SaveCredentials, so this test doesn't depend on that function surviving
-// future cleanup) and, if profilesJSON is non-nil, a sibling profiles.json.
+// TestSaveSecretsAtomicNoLeftoverTmp covers finding 2: SaveSecrets writes via
+// a temp file + rename, so a successful save must leave no ".tmp" behind,
+// and a normal SaveSecrets -> LoadSecrets round trip must still work.
+func TestSaveSecretsAtomicNoLeftoverTmp(t *testing.T) {
+	dir := t.TempDir()
+	pass := []byte("hunter2")
+	profiles := []Profile{{Name: "main", Username: "alice", Domain: "flatex.at", Password: "pw-a"}}
+	if err := SaveSecrets(dir, pass, profiles); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(credPath(dir) + ".tmp"); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("leftover .tmp file after SaveSecrets: err = %v", err)
+	}
+	got, err := LoadSecrets(dir, pass)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != profiles[0] {
+		t.Fatalf("got %+v, want %+v", got, profiles)
+	}
+}
+
+// legacyFixture writes a v1-format credentials.enc directly (encrypting the
+// legacy payload itself, rather than going through any save helper) and, if
+// profilesJSON is non-nil, a sibling profiles.json.
 func legacyFixture(t *testing.T, dir string, pass []byte, passwords map[string]string, profilesJSON []Profile) {
 	t.Helper()
 	legacyPT, err := json.Marshal(passwords)
