@@ -200,9 +200,12 @@ func TestRunProfileEmptyArgs(t *testing.T) {
 
 func TestRunProfileDirError(t *testing.T) {
 	// No FLATEX_FETCH_CONFIG_DIR override and no $HOME: config.Dir() must
-	// fail, and runProfile must surface that before dispatching.
+	// fail, and runProfile must surface that before dispatching. On Linux,
+	// os.UserConfigDir() checks $XDG_CONFIG_HOME before $HOME, so that
+	// must be cleared too (see TestDirErrorsWithoutHome in internal/config).
 	t.Setenv("FLATEX_FETCH_CONFIG_DIR", "")
 	t.Setenv("HOME", "")
+	t.Setenv("XDG_CONFIG_HOME", "")
 	if got := runProfile([]string{"list"}); got != 1 {
 		t.Fatalf("runProfile(list) with no $HOME = %d, want 1", got)
 	}

@@ -50,9 +50,14 @@ func TestDirRespectsConfigDirOverride(t *testing.T) {
 
 func TestDirErrorsWithoutHome(t *testing.T) {
 	// No FLATEX_FETCH_CONFIG_DIR override and no $HOME: os.UserConfigDir()
-	// fails on darwin/unix, and Dir() must propagate that.
+	// fails on darwin/unix, and Dir() must propagate that. On Linux,
+	// os.UserConfigDir() checks $XDG_CONFIG_HOME before falling back to
+	// $HOME, so that must be cleared too or this test is only reliably
+	// exercised on darwin (it passed locally on macOS and failed on
+	// Ubuntu CI, where XDG_CONFIG_HOME was set in the runner's environment).
 	t.Setenv("FLATEX_FETCH_CONFIG_DIR", "")
 	t.Setenv("HOME", "")
+	t.Setenv("XDG_CONFIG_HOME", "")
 	if _, err := Dir(); err == nil {
 		t.Fatal("expected error when $HOME is unset")
 	}
