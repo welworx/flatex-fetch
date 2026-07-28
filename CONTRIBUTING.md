@@ -10,8 +10,10 @@ disclaimer](README.md#disclaimer)), but fixes and improvements are welcome.
 3. `go vet ./...` is clean
 4. Linter passes: `golangci-lint run` (config in `.golangci.yml`)
 
-`.pre-commit-config.yaml` runs all four on commit if you want them enforced
-automatically (`pip install pre-commit && pre-commit install`).
+`.pre-commit-config.yaml` runs the first three (tests, gofmt, go vet) on
+commit if you want them enforced automatically (`pip install pre-commit &&
+pre-commit install`) — it does not run golangci-lint, so run that one
+yourself before opening a PR.
 
 Live-portal e2e tests (`FLATEX_E2E_USER=... FLATEX_E2E_PASS=... go test -tags
 e2e ./internal/portal/`) are manual only, not required for a PR — useful if

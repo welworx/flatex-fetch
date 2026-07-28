@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -21,7 +22,7 @@ func TestDescribeDocument(t *testing.T) {
 	}
 }
 
-func TestResolveProfilesAndCredsDefaultsToFirstProfile(t *testing.T) {
+func TestResolveProfilesDefaultsToFirstProfile(t *testing.T) {
 	isolateConfigDir(t)
 	t.Setenv("FLATEX_FETCH_PASSPHRASE", "pp")
 
@@ -36,39 +37,64 @@ func TestResolveProfilesAndCredsDefaultsToFirstProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	profiles, _, err := resolveProfilesAndCreds("", false)
+	profiles, err := resolveProfiles("", false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(profiles) != 1 || profiles[0].Name != "a" {
-		t.Fatalf("profiles = %+v, want first profile \"a\"", profiles)
+	if len(profiles) != 1 || profiles[0].Name != "a" || profiles[0].Password != "pw-a" {
+		t.Fatalf("profiles = %+v, want first profile \"a\"/pw-a", profiles)
 	}
 }
 
-func TestResolveProfilesAndCredsEnvBypassesProfiles(t *testing.T) {
+func TestResolveProfilesEnvBypassesProfiles(t *testing.T) {
 	isolateConfigDir(t)
 	t.Setenv("FLATEX_FETCH_USERNAME", "alice")
 	t.Setenv("FLATEX_FETCH_PASSWORD", "pw")
 
-	// -profile is ignored; no profiles.json/passphrase needed at all.
-	profiles, creds, err := resolveProfilesAndCreds("someprofile", false)
+	// -profile is ignored; no credentials.enc/passphrase needed at all.
+	profiles, err := resolveProfiles("someprofile", false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(profiles) != 1 || profiles[0].Name != "from-env" || profiles[0].Username != "alice" || profiles[0].Domain != "flatex.at" {
-		t.Fatalf("profiles = %+v, want single from-env/alice/flatex.at", profiles)
-	}
-	if creds["from-env"] != "pw" {
-		t.Fatalf("creds = %+v, want from-env -> pw", creds)
+	if len(profiles) != 1 || profiles[0].Name != "from-env" || profiles[0].Username != "alice" || profiles[0].Domain != "flatex.at" || profiles[0].Password != "pw" {
+		t.Fatalf("profiles = %+v, want single from-env/alice/flatex.at/pw", profiles)
 	}
 
 	t.Setenv("FLATEX_FETCH_DOMAIN", "flatex.de")
-	profiles, _, err = resolveProfilesAndCreds("", false)
+	profiles, err = resolveProfiles("", false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if profiles[0].Domain != "flatex.de" {
 		t.Fatalf("domain = %q, want flatex.de override", profiles[0].Domain)
+	}
+}
+
+// TestResolveProfilesRejectsEmptyDomain covers finding 6: an orphan-migrated
+// profile with an empty Domain must fail with a clear, actionable error
+// instead of reaching the portal client with a broken URL.
+func TestResolveProfilesRejectsEmptyDomain(t *testing.T) {
+	isolateConfigDir(t)
+	t.Setenv("FLATEX_FETCH_PASSPHRASE", "pp")
+
+	cfgDir, err := config.Dir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Bypass profileAdd (which always sets a domain) to simulate the orphan
+	// migration case directly: a profile with Domain left empty.
+	if err := config.SaveSecrets(cfgDir, []byte("pp"), []config.Profile{
+		{Name: "orphan", Username: "alice", Domain: "", Password: "pw-a"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = resolveProfiles("orphan", false)
+	if err == nil {
+		t.Fatal("expected error for profile with empty domain")
+	}
+	if got := err.Error(); !strings.Contains(got, "no domain") {
+		t.Fatalf("err = %q, want it to mention \"no domain\"", got)
 	}
 }
 

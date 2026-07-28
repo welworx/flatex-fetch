@@ -33,7 +33,7 @@ fetch → parse pipeline.
   fetched document) — wide ranges are split automatically so the portal's
   own 100-document result limit doesn't cause silently missing documents
 - **Handles multiple accounts**: manage several portal logins
-  (`profile add|list|remove`) and fetch one or all of them in a single run
+  (`profile add|list|update|remove`) and fetch one or all of them in a single run
 - **Automation-ready**: no interactive prompts (env-var credentials),
   machine-readable output (`list -json`/`-csv`), and exit codes scripts can
   branch on — run unattended from cron/CI, or chain into
@@ -47,6 +47,9 @@ fetch → parse pipeline.
   downloaded as it goes — instead of silence until the run finishes
 - **Your portal password is never stored in plaintext**: encrypted locally
   (argon2id + AES-256-GCM), unlocked by a master passphrase you set once
+- **Config location is yours to choose**: `-config-dir`/`FLATEX_FETCH_CONFIG_DIR`
+  moves `credentials.enc` off the OS default disk location — e.g. onto an
+  encrypted volume
 
 ## Install
 
@@ -63,9 +66,28 @@ or grab a [release binary](https://github.com/welworx/flatex-fetch/releases/late
 
     flatex-fetch profile add main -domain flatex.at
 
-Prompts for your portal username and password. The password is stored in
-`~/.config/flatex-fetch/credentials.enc`, encrypted (argon2id + AES-256-GCM)
-with a master passphrase you set on first use.
+Prompts for your portal username and password. Every profile — name,
+username, domain, and password — is stored together in `credentials.enc`,
+encrypted (argon2id + AES-256-GCM) under one master passphrase you set on
+first use, under the OS default config location (`~/.config/flatex-fetch`
+on Linux, `~/Library/Application Support/flatex-fetch` on macOS) unless you
+pass `-config-dir DIR` or set `FLATEX_FETCH_CONFIG_DIR`.
+
+Want to change your master passphrase? `flatex-fetch profile passphrase`
+re-encrypts everything under a new one (prompts for the current passphrase,
+then a new one twice to confirm) — no profile data changes.
+
+Upgrading from an older version that used a separate plaintext
+`profiles.json`? The first command you run auto-migrates it into
+`credentials.enc` and renames it to `profiles.json.bak`.
+
+Changed your portal password? Update the existing profile in place instead
+of removing and re-adding it:
+
+    flatex-fetch profile update main
+
+Prompts for a new username/password; leave either blank to keep its current
+value. `-domain` works the same way as `profile add`.
 
 For cron/CI, every prompt above can be skipped with environment variables
 instead — see [Environment Variables](#environment-variables).
@@ -75,12 +97,13 @@ instead — see [Environment Variables](#environment-variables).
 | Variable | Purpose |
 |---|---|
 | `FLATEX_FETCH_PASSPHRASE` | `credentials.enc` master passphrase — skips the prompt |
-| `FLATEX_FETCH_USERNAME` | Portal username. For `profile add`, skips the prompt. For `fetch`/`list`, combined with `FLATEX_FETCH_PASSWORD`, see below |
+| `FLATEX_FETCH_USERNAME` | Portal username. For `profile add`/`profile update`, skips the prompt. For `fetch`/`list`, combined with `FLATEX_FETCH_PASSWORD`, see below |
 | `FLATEX_FETCH_PASSWORD` | Portal password — see `FLATEX_FETCH_USERNAME` |
 | `FLATEX_FETCH_DOMAIN` | Portal domain for `FLATEX_FETCH_USERNAME`/`PASSWORD` logins (default `flatex.at`) |
+| `FLATEX_FETCH_CONFIG_DIR` | Config directory, overriding the OS default — same as `-config-dir` |
 
 `fetch`/`list` also accept `FLATEX_FETCH_USERNAME`/`FLATEX_FETCH_PASSWORD`
-directly, skipping `profile add` and `profiles.json` entirely — useful for
+directly, skipping `profile add` and `credentials.enc` entirely — useful for
 cron/CI without a stored profile. In that mode `-profile`/`-all-profiles`
 are ignored, and the portal domain defaults to `flatex.at` unless
 overridden by `FLATEX_FETCH_DOMAIN`.
