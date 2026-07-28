@@ -1,7 +1,6 @@
 package main
 
 import (
-	"os"
 	"testing"
 
 	"github.com/welworx/flatex-fetch/internal/config"
@@ -18,6 +17,20 @@ func TestReadPassphraseFromEnv(t *testing.T) {
 	}
 }
 
+func TestApplyProfileFields(t *testing.T) {
+	secrets := []config.Profile{
+		{Name: "main", Username: "alice", Domain: "flatex.at", Password: "pw1"},
+	}
+	applyProfileFields(secrets, 0, "", "", "pw2")
+	if secrets[0].Username != "alice" || secrets[0].Domain != "flatex.at" || secrets[0].Password != "pw2" {
+		t.Fatalf("password-only update: got %+v", secrets[0])
+	}
+	applyProfileFields(secrets, 0, "flatex.de", "bob", "")
+	if secrets[0].Username != "bob" || secrets[0].Domain != "flatex.de" || secrets[0].Password != "pw2" {
+		t.Fatalf("username+domain update: got %+v", secrets[0])
+	}
+}
+
 func TestRunProfileAddFromEnv(t *testing.T) {
 	isolateConfigDir(t)
 	t.Setenv("FLATEX_FETCH_PASSPHRASE", "pp")
@@ -31,86 +44,127 @@ func TestRunProfileAddFromEnv(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ps, err := config.LoadProfiles(dir)
-	if err != nil || len(ps) != 1 || ps[0].Username != "alice" {
-		t.Fatalf("profiles = %+v, err = %v", ps, err)
-	}
-	creds, err := config.LoadCredentials(dir, []byte("pp"))
-	if err != nil || creds["main"] != "pw1" {
-		t.Fatalf("creds = %v, err = %v", creds, err)
+	secrets, err := config.LoadSecrets(dir, []byte("pp"))
+	if err != nil || len(secrets) != 1 || secrets[0].Username != "alice" || secrets[0].Password != "pw1" || secrets[0].Domain != "flatex.at" {
+		t.Fatalf("secrets = %+v, err = %v", secrets, err)
 	}
 }
 
-func TestProfileAddRemoveRoundTrip(t *testing.T) {
-	dir := t.TempDir()
+func TestRunProfileAddDomainFlag(t *testing.T) {
+	isolateConfigDir(t)
 	t.Setenv("FLATEX_FETCH_PASSPHRASE", "pp")
+	t.Setenv("FLATEX_FETCH_USERNAME", "alice")
+	t.Setenv("FLATEX_FETCH_PASSWORD", "pw1")
 
-	if err := profileAdd(dir, "main", "flatex.at", "alice", "pw1"); err != nil {
-		t.Fatal(err)
+	if got := runProfile([]string{"add", "main", "-domain", "flatex.de"}); got != 0 {
+		t.Fatalf("runProfile(add -domain) = %d, want 0", got)
 	}
-	ps, err := config.LoadProfiles(dir)
-	if err != nil || len(ps) != 1 || ps[0].Name != "main" {
-		t.Fatalf("profiles = %+v, err = %v", ps, err)
+	dir, _ := config.Dir()
+	secrets, err := config.LoadSecrets(dir, []byte("pp"))
+	if err != nil || len(secrets) != 1 || secrets[0].Domain != "flatex.de" {
+		t.Fatalf("secrets = %+v, err = %v", secrets, err)
 	}
-	creds, err := config.LoadCredentials(dir, []byte("pp"))
-	if err != nil || creds["main"] != "pw1" {
-		t.Fatalf("creds = %v, err = %v", creds, err)
-	}
-
-	// duplicate name rejected
-	if err := profileAdd(dir, "main", "flatex.at", "bob", "pw2"); err == nil {
-		t.Fatal("duplicate profile add succeeded")
-	}
-
-	if err := profileRemove(dir, "main"); err != nil {
-		t.Fatal(err)
-	}
-	ps, _ = config.LoadProfiles(dir)
-	if len(ps) != 0 {
-		t.Fatalf("profiles after remove = %+v", ps)
-	}
-	creds, _ = config.LoadCredentials(dir, []byte("pp"))
-	if len(creds) != 0 {
-		t.Fatalf("creds after remove = %v", creds)
-	}
-	_ = os.Unsetenv("FLATEX_FETCH_PASSPHRASE")
 }
 
-func TestProfileUpdate(t *testing.T) {
-	dir := t.TempDir()
+func TestRunProfileAddDuplicateRejected(t *testing.T) {
+	isolateConfigDir(t)
 	t.Setenv("FLATEX_FETCH_PASSPHRASE", "pp")
+	t.Setenv("FLATEX_FETCH_USERNAME", "alice")
+	t.Setenv("FLATEX_FETCH_PASSWORD", "pw1")
 
-	if err := profileAdd(dir, "main", "flatex.at", "alice", "pw1"); err != nil {
-		t.Fatal(err)
+	runProfile([]string{"add", "main"})
+	if got := runProfile([]string{"add", "main"}); got != 1 {
+		t.Fatalf("duplicate runProfile(add) = %d, want 1", got)
 	}
+}
 
-	// password-only change: username/domain stay put
-	if err := profileUpdate(dir, "main", "", "", "pw2"); err != nil {
-		t.Fatal(err)
+func TestRunProfileListEmptyNoPrompt(t *testing.T) {
+	isolateConfigDir(t)
+	// No FLATEX_FETCH_PASSPHRASE set, and no credentials.enc yet: must not
+	// try to prompt (which would fail/hang with no TTY in a test).
+	if got := runProfile([]string{"list"}); got != 0 {
+		t.Fatalf("runProfile(list) on empty dir = %d, want 0", got)
 	}
-	ps, err := config.LoadProfiles(dir)
-	if err != nil || len(ps) != 1 || ps[0].Username != "alice" || ps[0].Domain != "flatex.at" {
-		t.Fatalf("profiles = %+v, err = %v", ps, err)
-	}
-	creds, err := config.LoadCredentials(dir, []byte("pp"))
-	if err != nil || creds["main"] != "pw2" {
-		t.Fatalf("creds = %v, err = %v", creds, err)
-	}
+}
 
-	// username + domain change, password left alone
-	if err := profileUpdate(dir, "main", "flatex.de", "bob", ""); err != nil {
-		t.Fatal(err)
-	}
-	ps, err = config.LoadProfiles(dir)
-	if err != nil || ps[0].Username != "bob" || ps[0].Domain != "flatex.de" {
-		t.Fatalf("profiles = %+v, err = %v", ps, err)
-	}
-	creds, err = config.LoadCredentials(dir, []byte("pp"))
-	if err != nil || creds["main"] != "pw2" {
-		t.Fatalf("creds = %v, err = %v", creds, err)
-	}
+func TestRunProfileListAfterAdd(t *testing.T) {
+	isolateConfigDir(t)
+	t.Setenv("FLATEX_FETCH_PASSPHRASE", "pp")
+	t.Setenv("FLATEX_FETCH_USERNAME", "alice")
+	t.Setenv("FLATEX_FETCH_PASSWORD", "pw1")
+	runProfile([]string{"add", "main"})
 
-	if err := profileUpdate(dir, "missing", "", "", "pw3"); err == nil {
-		t.Fatal("update of nonexistent profile succeeded")
+	if got := runProfile([]string{"list"}); got != 0 {
+		t.Fatalf("runProfile(list) = %d, want 0", got)
+	}
+}
+
+func TestRunProfileUpdateUsernameBlankKeepsCurrent(t *testing.T) {
+	isolateConfigDir(t)
+	t.Setenv("FLATEX_FETCH_PASSPHRASE", "pp")
+	t.Setenv("FLATEX_FETCH_USERNAME", "alice")
+	t.Setenv("FLATEX_FETCH_PASSWORD", "pw1")
+	runProfile([]string{"add", "main"})
+
+	t.Setenv("FLATEX_FETCH_USERNAME", "")
+	t.Setenv("FLATEX_FETCH_PASSWORD", "pw2")
+	withStdin(t, "\n")
+	if got := runProfile([]string{"update", "main"}); got != 0 {
+		t.Fatalf("runProfile(update) = %d, want 0", got)
+	}
+	dir, _ := config.Dir()
+	secrets, err := config.LoadSecrets(dir, []byte("pp"))
+	if err != nil || len(secrets) != 1 || secrets[0].Username != "alice" || secrets[0].Password != "pw2" {
+		t.Fatalf("secrets = %+v, err = %v", secrets, err)
+	}
+}
+
+func TestRunProfileUpdateDomainFlag(t *testing.T) {
+	isolateConfigDir(t)
+	t.Setenv("FLATEX_FETCH_PASSPHRASE", "pp")
+	t.Setenv("FLATEX_FETCH_USERNAME", "alice")
+	t.Setenv("FLATEX_FETCH_PASSWORD", "pw1")
+	runProfile([]string{"add", "main"})
+
+	if got := runProfile([]string{"update", "main", "-domain", "flatex.de"}); got != 0 {
+		t.Fatalf("runProfile(update -domain) = %d, want 0", got)
+	}
+	dir, _ := config.Dir()
+	secrets, err := config.LoadSecrets(dir, []byte("pp"))
+	if err != nil || len(secrets) != 1 || secrets[0].Domain != "flatex.de" || secrets[0].Username != "alice" || secrets[0].Password != "pw1" {
+		t.Fatalf("secrets = %+v, err = %v", secrets, err)
+	}
+}
+
+func TestRunProfileUpdateMissing(t *testing.T) {
+	isolateConfigDir(t)
+	// No credentials.enc at all: must fail before any prompt.
+	if got := runProfile([]string{"update", "ghost"}); got != 1 {
+		t.Fatalf("runProfile(update ghost) on empty dir = %d, want 1", got)
+	}
+}
+
+func TestRunProfileRemove(t *testing.T) {
+	isolateConfigDir(t)
+	t.Setenv("FLATEX_FETCH_PASSPHRASE", "pp")
+	t.Setenv("FLATEX_FETCH_USERNAME", "alice")
+	t.Setenv("FLATEX_FETCH_PASSWORD", "pw1")
+	runProfile([]string{"add", "main"})
+
+	if got := runProfile([]string{"remove", "main"}); got != 0 {
+		t.Fatalf("runProfile(remove) = %d, want 0", got)
+	}
+	dir, _ := config.Dir()
+	secrets, err := config.LoadSecrets(dir, []byte("pp"))
+	if err != nil || len(secrets) != 0 {
+		t.Fatalf("secrets = %+v, err = %v, want empty", secrets, err)
+	}
+}
+
+func TestRunProfileRemoveMissing(t *testing.T) {
+	isolateConfigDir(t)
+	// No credentials.enc at all: must fail before any prompt.
+	if got := runProfile([]string{"remove", "ghost"}); got != 1 {
+		t.Fatalf("runProfile(remove ghost) on empty dir = %d, want 1", got)
 	}
 }

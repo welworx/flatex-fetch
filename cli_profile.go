@@ -50,78 +50,52 @@ func promptLine(prompt string) (string, error) {
 }
 
 func profileAdd(dir, name, domain, username, password string) error {
-	ps, err := config.LoadProfiles(dir)
-	if err != nil {
-		return err
-	}
-	for _, p := range ps {
-		if p.Name == name {
-			return fmt.Errorf("profile %q already exists", name)
-		}
-	}
 	pass, err := readPassphrase(!config.CredentialsExist(dir))
 	if err != nil {
 		return err
 	}
-	creds, err := config.LoadCredentials(dir, pass)
+	secrets, err := config.LoadSecrets(dir, pass)
 	if err != nil {
 		return err
 	}
-	creds[name] = password
-	if err := config.SaveCredentials(dir, pass, creds); err != nil {
-		return err
+	for _, p := range secrets {
+		if p.Name == name {
+			return fmt.Errorf("profile %q already exists", name)
+		}
 	}
-	return config.SaveProfiles(dir, append(ps, config.Profile{Name: name, Username: username, Domain: domain}))
+	secrets = append(secrets, config.Profile{Name: name, Username: username, Domain: domain, Password: password})
+	return config.SaveSecrets(dir, pass, secrets)
 }
 
-// profileUpdate changes an existing profile's domain/username/password.
-// Empty domain/username/password mean "leave unchanged".
-func profileUpdate(dir, name, domain, username, password string) error {
-	ps, err := config.LoadProfiles(dir)
-	if err != nil {
-		return err
-	}
-	idx := -1
-	for i, p := range ps {
-		if p.Name == name {
-			idx = i
-			break
-		}
-	}
-	if idx == -1 {
-		return fmt.Errorf("no profile %q", name)
-	}
+// applyProfileFields mutates secrets[idx], applying domain/username/
+// password where non-empty (each "" means "leave unchanged").
+func applyProfileFields(secrets []config.Profile, idx int, domain, username, password string) {
 	if domain != "" {
-		ps[idx].Domain = domain
+		secrets[idx].Domain = domain
 	}
 	if username != "" {
-		ps[idx].Username = username
+		secrets[idx].Username = username
 	}
 	if password != "" {
-		pass, err := readPassphrase(!config.CredentialsExist(dir))
-		if err != nil {
-			return err
-		}
-		creds, err := config.LoadCredentials(dir, pass)
-		if err != nil {
-			return err
-		}
-		creds[name] = password
-		if err := config.SaveCredentials(dir, pass, creds); err != nil {
-			return err
-		}
+		secrets[idx].Password = password
 	}
-	return config.SaveProfiles(dir, ps)
 }
 
 func profileRemove(dir, name string) error {
-	ps, err := config.LoadProfiles(dir)
+	if !config.CredentialsExist(dir) {
+		return fmt.Errorf("no profile %q", name)
+	}
+	pass, err := readPassphrase(false)
 	if err != nil {
 		return err
 	}
-	kept := ps[:0]
+	secrets, err := config.LoadSecrets(dir, pass)
+	if err != nil {
+		return err
+	}
+	kept := secrets[:0]
 	found := false
-	for _, p := range ps {
+	for _, p := range secrets {
 		if p.Name == name {
 			found = true
 			continue
@@ -131,24 +105,10 @@ func profileRemove(dir, name string) error {
 	if !found {
 		return fmt.Errorf("no profile %q", name)
 	}
-	if config.CredentialsExist(dir) {
-		pass, err := readPassphrase(false)
-		if err != nil {
-			return err
-		}
-		creds, err := config.LoadCredentials(dir, pass)
-		if err != nil {
-			return err
-		}
-		delete(creds, name)
-		if err := config.SaveCredentials(dir, pass, creds); err != nil {
-			return err
-		}
-	}
-	return config.SaveProfiles(dir, kept)
+	return config.SaveSecrets(dir, pass, kept)
 }
 
-// runProfile handles `flatex-fetch profile <add|list|remove> ...`.
+// runProfile handles `flatex-fetch profile <add|list|update|remove> ...`.
 func runProfile(args []string) int {
 	if len(args) == 0 {
 		return usage()
@@ -197,19 +157,28 @@ func runProfile(args []string) int {
 			return usage()
 		}
 		name := args[1]
-		ps, err := config.LoadProfiles(dir)
+		if !config.CredentialsExist(dir) {
+			fmt.Fprintf(os.Stderr, "error: no profile %q\n", name)
+			return 1
+		}
+		pass, err := readPassphrase(false)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			return 1
 		}
-		current := -1
-		for i, p := range ps {
+		secrets, err := config.LoadSecrets(dir, pass)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			return 1
+		}
+		idx := -1
+		for i, p := range secrets {
 			if p.Name == name {
-				current = i
+				idx = i
 				break
 			}
 		}
-		if current == -1 {
+		if idx == -1 {
 			fmt.Fprintf(os.Stderr, "error: no profile %q\n", name)
 			return 1
 		}
@@ -220,7 +189,7 @@ func runProfile(args []string) int {
 		username := os.Getenv("FLATEX_FETCH_USERNAME")
 		if username == "" {
 			var err error
-			username, err = promptLine(fmt.Sprintf("New username [%s] (leave blank to keep): ", ps[current].Username))
+			username, err = promptLine(fmt.Sprintf("New username [%s] (leave blank to keep): ", secrets[idx].Username))
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "error:", err)
 				return 1
@@ -235,19 +204,28 @@ func runProfile(args []string) int {
 			}
 			password = string(pw)
 		}
-		if err := profileUpdate(dir, name, domain, username, password); err != nil {
+		applyProfileFields(secrets, idx, domain, username, password)
+		if err := config.SaveSecrets(dir, pass, secrets); err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			return 1
 		}
 		fmt.Println("profile", name, "updated")
 		return 0
 	case "list":
-		ps, err := config.LoadProfiles(dir)
+		if !config.CredentialsExist(dir) {
+			return 0
+		}
+		pass, err := readPassphrase(false)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			return 1
 		}
-		for _, p := range ps {
+		secrets, err := config.LoadSecrets(dir, pass)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			return 1
+		}
+		for _, p := range secrets {
 			fmt.Printf("%s\t%s\t%s\n", p.Name, p.Username, p.Domain)
 		}
 		return 0
