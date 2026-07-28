@@ -108,6 +108,36 @@ func profileRemove(dir, name string) error {
 	return config.SaveSecrets(dir, pass, kept)
 }
 
+// profileChangePassphrase re-encrypts every profile under a new
+// passphrase, prompted twice to confirm. Always interactive — never read
+// from FLATEX_FETCH_PASSPHRASE, which already means "current passphrase"
+// everywhere else in the CLI. No profile data is changed.
+func profileChangePassphrase(dir string) error {
+	if !config.CredentialsExist(dir) {
+		return errors.New("no credentials.enc to rekey")
+	}
+	oldPass, err := readPassphrase(false)
+	if err != nil {
+		return err
+	}
+	secrets, err := config.LoadSecrets(dir, oldPass)
+	if err != nil {
+		return err
+	}
+	newPass, err := promptSecret("New passphrase: ")
+	if err != nil {
+		return err
+	}
+	confirm, err := promptSecret("Repeat new passphrase: ")
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(newPass, confirm) {
+		return errors.New("passphrases do not match")
+	}
+	return config.SaveSecrets(dir, newPass, secrets)
+}
+
 // runProfile handles `flatex-fetch profile <add|list|update|remove> ...`.
 func runProfile(args []string) int {
 	if len(args) == 0 {
@@ -238,6 +268,13 @@ func runProfile(args []string) int {
 			return 1
 		}
 		fmt.Println("profile", args[1], "removed")
+		return 0
+	case "passphrase":
+		if err := profileChangePassphrase(dir); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			return 1
+		}
+		fmt.Println("passphrase changed")
 		return 0
 	default:
 		return usage()

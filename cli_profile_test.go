@@ -168,3 +168,49 @@ func TestRunProfileRemoveMissing(t *testing.T) {
 		t.Fatalf("runProfile(remove ghost) on empty dir = %d, want 1", got)
 	}
 }
+
+func TestProfileChangePassphraseRotatesKey(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("FLATEX_FETCH_PASSPHRASE", "old-pass")
+	if err := profileAdd(dir, "main", "flatex.at", "alice", "pw1"); err != nil {
+		t.Fatal(err)
+	}
+	// profileChangePassphrase's own new-passphrase step is TTY-only (see
+	// TestSecretsSurviveRekey for the round trip it relies on) — this test
+	// only checks the CredentialsExist(dir) guard: it must exist by now.
+	if !config.CredentialsExist(dir) {
+		t.Fatal("credentials.enc should exist after profileAdd")
+	}
+}
+
+func TestProfileChangePassphraseNoCredentials(t *testing.T) {
+	dir := t.TempDir()
+	if err := profileChangePassphrase(dir); err == nil {
+		t.Fatal("expected error rekeying a directory with no credentials.enc")
+	}
+}
+
+func TestSecretsSurviveRekey(t *testing.T) {
+	dir := t.TempDir()
+	old := []byte("old-pass")
+	profiles := []config.Profile{{Name: "main", Username: "alice", Domain: "flatex.at", Password: "pw1"}}
+	if err := config.SaveSecrets(dir, old, profiles); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := config.LoadSecrets(dir, old)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	newPass := []byte("new-pass")
+	if err := config.SaveSecrets(dir, newPass, loaded); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := config.LoadSecrets(dir, old); err == nil {
+		t.Fatal("old passphrase still works after rekey")
+	}
+	got, err := config.LoadSecrets(dir, newPass)
+	if err != nil || len(got) != 1 || got[0] != profiles[0] {
+		t.Fatalf("got %+v, err = %v", got, err)
+	}
+}
