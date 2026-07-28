@@ -18,6 +18,7 @@ func usage() int {
   flatex-fetch profile list
   flatex-fetch profile update <name> [-domain flatex.at]
   flatex-fetch profile remove <name>
+  flatex-fetch profile passphrase
   flatex-fetch fetch [-profile <name>|-all-profiles] [-out DIR] [-format TEMPLATE] [-user-agent UA] [-days N | -from YYYY-MM-DD -to YYYY-MM-DD | -since-last] [-all] [-verbose]
   flatex-fetch list [-profile <name>|-all-profiles] [-user-agent UA] [-days N | -from YYYY-MM-DD -to YYYY-MM-DD] [-csv | -json]
   flatex-fetch upgrade [-check] [-y]
@@ -45,8 +46,8 @@ USAGE
 
 GLOBAL FLAGS
   -config-dir DIR    use DIR instead of the OS default config location for
-                      profiles.json/credentials.enc (same effect as
-                      FLATEX_FETCH_CONFIG_DIR; must come before <command>)
+                      credentials.enc (same effect as FLATEX_FETCH_CONFIG_DIR;
+                      must come before <command>)
 
 COMMANDS
   profile add <name> [-domain flatex.at]   add a profile (prompts for credentials)
@@ -55,6 +56,8 @@ COMMANDS
                                             change a profile's username/password/domain
                                             (prompts; blank answer keeps the current value)
   profile remove <name>                    remove a profile
+  profile passphrase                       change the master passphrase (re-encrypts everything;
+                                            prompts for current + new passphrase, no profile data changes)
   fetch [flags]                            download new documents
   list [flags]                             list documents without downloading
   upgrade [-check] [-y]                    check GitHub for a newer release and install it
@@ -114,7 +117,7 @@ ENVIRONMENT
   FLATEX_FETCH_PASSPHRASE   credentials.enc master passphrase (skip the prompt)
   FLATEX_FETCH_USERNAME     portal username for 'profile add'/'profile update' (skip the
                             prompt); for fetch/list, set with FLATEX_FETCH_PASSWORD to
-                            skip profiles.json entirely (-profile/-all-profiles
+                            skip credentials.enc entirely (-profile/-all-profiles
                             are ignored) and log in as "from-env" instead
   FLATEX_FETCH_PASSWORD     portal password, see FLATEX_FETCH_USERNAME above
   FLATEX_FETCH_DOMAIN       portal domain for the FLATEX_FETCH_USERNAME/PASSWORD
@@ -122,11 +125,16 @@ ENVIRONMENT
   FLATEX_FETCH_CONFIG_DIR   config directory, overriding the OS default (same as -config-dir)
 
 FILES
-  <config dir>/profiles.json      profile names, usernames, domains (plaintext)
-  <config dir>/credentials.enc    encrypted portal passwords
+  <config dir>/credentials.enc    every profile (name, username, domain,
+                                   password), encrypted (argon2id + AES-256-GCM)
+                                   under one master passphrase, changeable with
+                                   'profile passphrase'
   <config dir> defaults to the OS config location (~/.config/flatex-fetch on
   Linux, ~/Library/Application Support/flatex-fetch on macOS); override with
-  -config-dir or FLATEX_FETCH_CONFIG_DIR
+  -config-dir or FLATEX_FETCH_CONFIG_DIR. Upgrading from an older version:
+  the first command run against an existing config dir auto-migrates its
+  plaintext profiles.json into credentials.enc and renames it to
+  profiles.json.bak.
 
 EXAMPLES
   # first-time setup
@@ -160,8 +168,11 @@ EXAMPLES
   # fetch without a stored profile at all
   FLATEX_FETCH_USERNAME=... FLATEX_FETCH_PASSWORD=... flatex-fetch fetch
 
-  # keep profiles.json/credentials.enc off the default disk location
+  # keep credentials.enc off the default disk location
   flatex-fetch -config-dir /Volumes/secure/flatex-fetch profile list
+
+  # rotate your master passphrase (re-encrypts everything, changes nothing else)
+  flatex-fetch profile passphrase
 `)
 	return 0
 }
