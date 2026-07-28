@@ -190,6 +190,166 @@ func TestProfileChangePassphraseNoCredentials(t *testing.T) {
 	}
 }
 
+func TestRunProfileEmptyArgs(t *testing.T) {
+	if got := runProfile(nil); got != 2 {
+		t.Fatalf("runProfile(nil) = %d, want 2 (usage)", got)
+	}
+}
+
+func TestRunProfileDirError(t *testing.T) {
+	// No FLATEX_FETCH_CONFIG_DIR override and no $HOME: config.Dir() must
+	// fail, and runProfile must surface that before dispatching.
+	t.Setenv("FLATEX_FETCH_CONFIG_DIR", "")
+	t.Setenv("HOME", "")
+	if got := runProfile([]string{"list"}); got != 1 {
+		t.Fatalf("runProfile(list) with no $HOME = %d, want 1", got)
+	}
+}
+
+func TestRunProfileAddUsage(t *testing.T) {
+	if got := runProfile([]string{"add"}); got != 2 {
+		t.Fatalf("runProfile(add) with no name = %d, want 2", got)
+	}
+}
+
+func TestRunProfileAddWrongPassphrase(t *testing.T) {
+	isolateConfigDir(t)
+	t.Setenv("FLATEX_FETCH_PASSPHRASE", "right")
+	t.Setenv("FLATEX_FETCH_USERNAME", "alice")
+	t.Setenv("FLATEX_FETCH_PASSWORD", "pw1")
+	runProfile([]string{"add", "main"})
+
+	t.Setenv("FLATEX_FETCH_PASSPHRASE", "wrong")
+	if got := runProfile([]string{"add", "second"}); got != 1 {
+		t.Fatalf("runProfile(add) with wrong passphrase = %d, want 1", got)
+	}
+}
+
+func TestRunProfileAddUsernamePromptError(t *testing.T) {
+	isolateConfigDir(t)
+	t.Setenv("FLATEX_FETCH_PASSPHRASE", "pp")
+	t.Setenv("FLATEX_FETCH_USERNAME", "")
+	t.Setenv("FLATEX_FETCH_PASSWORD", "pw1")
+	withStdin(t, "") // no trailing newline: promptLine's ReadString hits EOF
+	if got := runProfile([]string{"add", "main"}); got != 1 {
+		t.Fatalf("runProfile(add) with username prompt EOF = %d, want 1", got)
+	}
+}
+
+func TestRunProfileUpdateUsage(t *testing.T) {
+	if got := runProfile([]string{"update"}); got != 2 {
+		t.Fatalf("runProfile(update) with no name = %d, want 2", got)
+	}
+}
+
+func TestRunProfileUpdateWrongPassphrase(t *testing.T) {
+	isolateConfigDir(t)
+	t.Setenv("FLATEX_FETCH_PASSPHRASE", "right")
+	t.Setenv("FLATEX_FETCH_USERNAME", "alice")
+	t.Setenv("FLATEX_FETCH_PASSWORD", "pw1")
+	runProfile([]string{"add", "main"})
+
+	t.Setenv("FLATEX_FETCH_PASSPHRASE", "wrong")
+	if got := runProfile([]string{"update", "main"}); got != 1 {
+		t.Fatalf("runProfile(update) with wrong passphrase = %d, want 1", got)
+	}
+}
+
+func TestRunProfileUpdateNotFoundWithCredentials(t *testing.T) {
+	isolateConfigDir(t)
+	t.Setenv("FLATEX_FETCH_PASSPHRASE", "pp")
+	t.Setenv("FLATEX_FETCH_USERNAME", "alice")
+	t.Setenv("FLATEX_FETCH_PASSWORD", "pw1")
+	runProfile([]string{"add", "main"})
+
+	// credentials.enc exists, but "ghost" isn't in it: distinct from
+	// TestRunProfileUpdateMissing, which has no credentials.enc at all.
+	if got := runProfile([]string{"update", "ghost"}); got != 1 {
+		t.Fatalf("runProfile(update ghost) = %d, want 1", got)
+	}
+}
+
+func TestRunProfileUpdateUsernamePromptError(t *testing.T) {
+	isolateConfigDir(t)
+	t.Setenv("FLATEX_FETCH_PASSPHRASE", "pp")
+	t.Setenv("FLATEX_FETCH_USERNAME", "alice")
+	t.Setenv("FLATEX_FETCH_PASSWORD", "pw1")
+	runProfile([]string{"add", "main"})
+
+	t.Setenv("FLATEX_FETCH_USERNAME", "")
+	withStdin(t, "")
+	if got := runProfile([]string{"update", "main"}); got != 1 {
+		t.Fatalf("runProfile(update) with username prompt EOF = %d, want 1", got)
+	}
+}
+
+func TestRunProfileListWrongPassphrase(t *testing.T) {
+	isolateConfigDir(t)
+	t.Setenv("FLATEX_FETCH_PASSPHRASE", "right")
+	t.Setenv("FLATEX_FETCH_USERNAME", "alice")
+	t.Setenv("FLATEX_FETCH_PASSWORD", "pw1")
+	runProfile([]string{"add", "main"})
+
+	t.Setenv("FLATEX_FETCH_PASSPHRASE", "wrong")
+	if got := runProfile([]string{"list"}); got != 1 {
+		t.Fatalf("runProfile(list) with wrong passphrase = %d, want 1", got)
+	}
+}
+
+func TestRunProfileRemoveUsage(t *testing.T) {
+	if got := runProfile([]string{"remove"}); got != 2 {
+		t.Fatalf("runProfile(remove) with no name = %d, want 2", got)
+	}
+}
+
+func TestRunProfileRemoveWrongPassphrase(t *testing.T) {
+	isolateConfigDir(t)
+	t.Setenv("FLATEX_FETCH_PASSPHRASE", "right")
+	t.Setenv("FLATEX_FETCH_USERNAME", "alice")
+	t.Setenv("FLATEX_FETCH_PASSWORD", "pw1")
+	runProfile([]string{"add", "main"})
+
+	t.Setenv("FLATEX_FETCH_PASSPHRASE", "wrong")
+	if got := runProfile([]string{"remove", "main"}); got != 1 {
+		t.Fatalf("runProfile(remove) with wrong passphrase = %d, want 1", got)
+	}
+}
+
+func TestRunProfileRemoveNotFoundAmongExisting(t *testing.T) {
+	isolateConfigDir(t)
+	t.Setenv("FLATEX_FETCH_PASSPHRASE", "pp")
+	t.Setenv("FLATEX_FETCH_USERNAME", "alice")
+	t.Setenv("FLATEX_FETCH_PASSWORD", "pw1")
+	runProfile([]string{"add", "main"})
+	t.Setenv("FLATEX_FETCH_USERNAME", "bob")
+	t.Setenv("FLATEX_FETCH_PASSWORD", "pw2")
+	runProfile([]string{"add", "second"})
+
+	// credentials.enc has entries, but not "ghost": exercises the kept-loop
+	// (non-matching entries get re-appended) and the not-found return.
+	if got := runProfile([]string{"remove", "ghost"}); got != 1 {
+		t.Fatalf("runProfile(remove ghost) among existing profiles = %d, want 1", got)
+	}
+	dir, _ := config.Dir()
+	secrets, err := config.LoadSecrets(dir, []byte("pp"))
+	if err != nil || len(secrets) != 2 {
+		t.Fatalf("secrets should be unchanged: %+v, err = %v", secrets, err)
+	}
+}
+
+func TestRunProfilePassphraseNoCredentials(t *testing.T) {
+	isolateConfigDir(t)
+	if got := runProfile([]string{"passphrase"}); got != 1 {
+		t.Fatalf("runProfile(passphrase) with no credentials.enc = %d, want 1", got)
+	}
+}
+
+func TestRunProfileUnknownSubcommand(t *testing.T) {
+	if got := runProfile([]string{"bogus"}); got != 2 {
+		t.Fatalf("runProfile(bogus) = %d, want 2 (usage)", got)
+	}
+}
+
 func TestSecretsSurviveRekey(t *testing.T) {
 	dir := t.TempDir()
 	old := []byte("old-pass")

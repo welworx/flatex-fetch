@@ -47,3 +47,35 @@ func TestDirRespectsConfigDirOverride(t *testing.T) {
 		t.Fatalf("Dir() = %q, want %q", got, want)
 	}
 }
+
+func TestDirErrorsWithoutHome(t *testing.T) {
+	// No FLATEX_FETCH_CONFIG_DIR override and no $HOME: os.UserConfigDir()
+	// fails on darwin/unix, and Dir() must propagate that.
+	t.Setenv("FLATEX_FETCH_CONFIG_DIR", "")
+	t.Setenv("HOME", "")
+	if _, err := Dir(); err == nil {
+		t.Fatal("expected error when $HOME is unset")
+	}
+}
+
+func TestLoadProfilesReadError(t *testing.T) {
+	dir := t.TempDir()
+	// profiles.json as a directory: os.ReadFile fails with a non-
+	// ErrNotExist error, distinct from the "file missing" branch.
+	if err := os.Mkdir(filepath.Join(dir, "profiles.json"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadProfiles(dir); err == nil {
+		t.Fatal("expected error reading profiles.json as a directory")
+	}
+}
+
+func TestLoadProfilesCorruptJSON(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "profiles.json"), []byte("not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadProfiles(dir); err == nil {
+		t.Fatal("expected error for corrupt profiles.json")
+	}
+}

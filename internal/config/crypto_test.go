@@ -130,3 +130,128 @@ func TestSecretsMigrationMissingProfilesJSON(t *testing.T) {
 		t.Fatalf("got %+v, want orphan/pw-o with empty username/domain", got)
 	}
 }
+
+func TestLoadSecretsReadError(t *testing.T) {
+	dir := t.TempDir()
+	// credentials.enc as a directory: os.ReadFile fails with a non-
+	// ErrNotExist error, distinct from the "file missing" branch.
+	if err := os.Mkdir(credPath(dir), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadSecrets(dir, []byte("x")); err == nil {
+		t.Fatal("expected error reading credentials.enc as a directory")
+	}
+}
+
+func TestLoadSecretsCorruptV2Payload(t *testing.T) {
+	dir := t.TempDir()
+	pass := []byte("hunter2")
+	blob, err := encrypt(pass, currentBlobVersion, []byte("not json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(credPath(dir), blob, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadSecrets(dir, pass); err == nil {
+		t.Fatal("expected json unmarshal error for corrupt v2 payload")
+	}
+}
+
+func TestLoadSecretsUnsupportedVersion(t *testing.T) {
+	dir := t.TempDir()
+	pass := []byte("hunter2")
+	blob, err := encrypt(pass, 99, []byte("{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(credPath(dir), blob, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadSecrets(dir, pass); err == nil {
+		t.Fatal("expected unsupported-version error")
+	}
+}
+
+func TestMigrateLegacyCorruptPasswords(t *testing.T) {
+	dir := t.TempDir()
+	pass := []byte("hunter2")
+	blob, err := encrypt(pass, legacyBlobVersion, []byte("[1,2,3]")) // not a map
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(credPath(dir), blob, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadSecrets(dir, pass); err == nil {
+		t.Fatal("expected json unmarshal error for corrupt legacy payload")
+	}
+}
+
+func TestMigrateLegacyCorruptProfilesJSON(t *testing.T) {
+	dir := t.TempDir()
+	pass := []byte("hunter2")
+	legacyFixture(t, dir, pass, map[string]string{"main": "pw-a"}, nil)
+	if err := os.WriteFile(filepath.Join(dir, "profiles.json"), []byte("not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadSecrets(dir, pass); err == nil {
+		t.Fatal("expected error loading corrupt profiles.json during migration")
+	}
+}
+
+func TestMigrateLegacyProfilesJSONEntryWithoutPassword(t *testing.T) {
+	dir := t.TempDir()
+	pass := []byte("hunter2")
+	legacyFixture(t, dir, pass,
+		map[string]string{"main": "pw-a"},
+		[]Profile{
+			{Name: "main", Username: "alice", Domain: "flatex.at"},
+			{Name: "nopassword", Username: "bob", Domain: "flatex.at"},
+		})
+
+	got, err := LoadSecrets(dir, pass)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Name != "main" {
+		t.Fatalf("got %+v, want only main (profiles.json entry with no matching password skipped)", got)
+	}
+}
+
+func TestMigrateLegacyRenameFailure(t *testing.T) {
+	dir := t.TempDir()
+	pass := []byte("hunter2")
+	legacyFixture(t, dir, pass, map[string]string{"main": "pw-a"},
+		[]Profile{{Name: "main", Username: "alice", Domain: "flatex.at"}})
+	// profiles.json.bak already exists as a directory: renaming
+	// profiles.json onto it during migration must fail.
+	if err := os.Mkdir(filepath.Join(dir, "profiles.json.bak"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadSecrets(dir, pass); err == nil {
+		t.Fatal("expected rename error when profiles.json.bak already exists as a directory")
+	}
+}
+
+func TestDecryptCorruptShortBlob(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(credPath(dir), []byte{1, 2, 3}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadSecrets(dir, []byte("x")); err == nil {
+		t.Fatal("expected error for too-short credentials.enc")
+	}
+}
