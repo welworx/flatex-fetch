@@ -51,11 +51,11 @@ GLOBAL FLAGS
 
 COMMANDS
   profile add <name> [-domain flatex.at]   add a profile (prompts for credentials)
-  profile list                             list configured profiles
+  profile list                             show configured profiles
   profile update <name> [-domain flatex.at]
                                             change a profile's username/password/domain
                                             (prompts; blank answer keeps the current value)
-  profile remove <name>                    remove a profile
+  profile remove <name>                    delete a saved login
   profile passphrase                       change the master passphrase (re-encrypts everything;
                                             prompts for current + new passphrase, no profile data changes)
   fetch [flags]                            download new documents
