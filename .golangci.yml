@@ -1,5 +1,19 @@
 version: "2"
 linters:
+  default: none
+  enable:
+    - bodyclose
+    - dupword
+    - errcheck
+    - errname
+    - gosec
+    - govet
+    - ineffassign
+    - misspell
+    - staticcheck
+    - unconvert
+    - unused
+    - whitespace
   exclusions:
     generated: lax
     presets:
@@ -11,6 +25,21 @@ linters:
       - linters:
           - errcheck
         path: _test\.go
+      - linters:
+          - gosec
+        path: _test\.go # test-only fixtures: mock cookies, temp exec files, marshaled test JSON — not production risk
+      - linters:
+          - gosec
+        text: G602 # false positive: len(args) is validated in parseNameDomainArgs before args[1] is read, gosec can't trace it across the call
+      - linters:
+          - gosec
+        text: G117 # expected: fields are marshaled deliberately (encrypted credential storage), not leaked
+      - linters:
+          - gosec
+        text: G101 # false positive (LOW confidence): capWarning is portal UI copy, not a credential
+      - linters:
+          - gosec
+        text: G404 # non-cryptographic use: window-id mimics the portal's own client-side format, pace jitter is bot-detection avoidance
     paths:
       - third_party$
       - builtin$
