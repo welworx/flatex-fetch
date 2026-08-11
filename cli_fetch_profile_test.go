@@ -1,0 +1,127 @@
+package main
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/welworx/flatex-fetch/internal/config"
+	"github.com/welworx/flatex-fetch/internal/portal"
+)
+
+// fakePortal is a portalClient standing in for a real portal session:
+// ListDocumentsDetailed filters its fixed document set by the requested
+// range (the portal's own behavior, and what -since-last's correctness
+// depends on), and Download writes a stub PDF unless the row index is in
+// failIdx.
+type fakePortal struct {
+	docs    []portal.Document
+	failIdx map[int]error
+
+	// downloads records the row indices Download was called with, in order,
+	// so tests can assert both which documents were attempted and in what
+	// order.
+	downloads []int
+}
+
+func (f *fakePortal) Login(username, password string) error { return nil }
+
+func (f *fakePortal) ListDocumentsDetailed(from, to time.Time) ([]portal.Document, error) {
+	var out []portal.Document
+	for _, d := range f.docs {
+		if !d.Date.Before(from) && !d.Date.After(to) {
+			out = append(out, d)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakePortal) Download(from, to time.Time, idx int, resolvePath portal.ResolvePath, seen map[string]bool, overwrite bool) (string, bool, error) {
+	f.downloads = append(f.downloads, idx)
+	if err := f.failIdx[idx]; err != nil {
+		return "", false, err
+	}
+	dir, name := resolvePath(fmt.Sprintf("doc-%d.pdf", idx))
+	dest := filepath.Join(dir, name)
+	if _, err := os.Stat(dest); err == nil && !overwrite {
+		return dest, true, nil
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", false, err
+	}
+	if err := os.WriteFile(dest, []byte("%PDF-1.4 fake"), 0o600); err != nil {
+		return "", false, err
+	}
+	seen[dest] = true
+	return dest, false, nil
+}
+
+// installFakePortal makes fetchProfile use f instead of a real portal
+// session for the duration of the test.
+func installFakePortal(t *testing.T, f *fakePortal) {
+	t.Helper()
+	orig := newPortalClient
+	newPortalClient = func(domain, userAgent string, log func(string, ...any)) (portalClient, error) {
+		return f, nil
+	}
+	t.Cleanup(func() { newPortalClient = orig })
+}
+
+func testDoc(idx int, date string, name string) portal.Document {
+	d, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		panic(err)
+	}
+	return portal.Document{Index: idx, Name: name, Date: d, WindowFrom: d, WindowTo: d}
+}
+
+// TestFetchProfileDownloadsOldestFirst covers the happy path and the
+// ordering invariant fetchProfile documents but never asserted: documents
+// must be downloaded oldest-first so an interrupted run leaves -since-last's
+// frontier gapless.
+func TestFetchProfileDownloadsOldestFirst(t *testing.T) {
+	f := &fakePortal{docs: []portal.Document{
+		testDoc(2, "2026-03-01", "March"),
+		testDoc(0, "2026-01-05", "January"),
+		testDoc(1, "2026-02-10", "February"),
+	}}
+	installFakePortal(t, f)
+
+	out := t.TempDir()
+	p := config.Profile{Name: "main", Username: "alice", Domain: "flatex.at", Password: "pw"}
+	from := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC)
+
+	if err := fetchProfile(p, p.Password, out, "", "", from, to, false, false, false); err != nil {
+		t.Fatalf("fetchProfile: %v", err)
+	}
+
+	want := []int{0, 1, 2}
+	if len(f.downloads) != len(want) {
+		t.Fatalf("downloads = %v, want %v", f.downloads, want)
+	}
+	for i, idx := range want {
+		if f.downloads[i] != idx {
+			t.Fatalf("downloads = %v, want oldest-first %v", f.downloads, want)
+		}
+	}
+
+	entries, err := readDownloadLog(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	total := 0
+	for _, group := range entries {
+		total += len(group)
+	}
+	if total != 3 {
+		t.Fatalf("log has %d entries, want 3", total)
+	}
+	for _, name := range []string{"doc-0.pdf", "doc-1.pdf", "doc-2.pdf"} {
+		if _, err := os.Stat(filepath.Join(out, "main", name)); err != nil {
+			t.Fatalf("expected %s under %s/main: %v", name, out, err)
+		}
+	}
+}

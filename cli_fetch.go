@@ -132,6 +132,28 @@ func resolveProfiles(profileName string, allProfiles bool) ([]config.Profile, er
 	return profiles, nil
 }
 
+// portalClient is the subset of *portal.Client that fetchProfile drives.
+// ponytail: an interface with one production implementation, which normally
+// wouldn't earn its keep — it exists solely because fetchProfile is
+// otherwise untestable without a live portal account. The fake in
+// cli_fetch_profile_test.go is the second implementation.
+type portalClient interface {
+	Login(username, password string) error
+	ListDocumentsDetailed(from, to time.Time) ([]portal.Document, error)
+	Download(from, to time.Time, idx int, resolvePath portal.ResolvePath, seen map[string]bool, overwrite bool) (string, bool, error)
+}
+
+// newPortalClient builds the real portal session. Tests swap it to inject a
+// fake; nothing else reassigns it.
+var newPortalClient = func(domain, userAgent string, log func(string, ...any)) (portalClient, error) {
+	c, err := portal.New(domain, userAgent)
+	if err != nil {
+		return nil, err
+	}
+	c.Log = log
+	return c, nil
+}
+
 func runFetch(args []string) int {
 	fs := flag.NewFlagSet("fetch", flag.ContinueOnError)
 	profileName := fs.String("profile", "", "profile to fetch (default: first configured profile)")
@@ -249,14 +271,15 @@ func fetchProfile(p config.Profile, password, out, format, userAgent string, fro
 	if password == "" {
 		return errors.New("no stored password (re-add the profile)")
 	}
-	c, err := portal.New(p.Domain, userAgent)
-	if err != nil {
-		return err
-	}
+	var log func(string, ...any)
 	if verbose {
-		c.Log = func(format string, args ...any) {
+		log = func(format string, args ...any) {
 			fmt.Fprintf(os.Stderr, "profile %s: "+format+"\n", append([]any{p.Name}, args...)...)
 		}
+	}
+	c, err := newPortalClient(p.Domain, userAgent, log)
+	if err != nil {
+		return err
 	}
 	if err := c.Login(p.Username, password); err != nil {
 		return err
