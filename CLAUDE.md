@@ -53,7 +53,12 @@ anything like `capLimit` — since the only live run so far never triggered
 the scroll loop (well under one batch). Treat a flatex-next result set
 larger than ~50 documents with more suspicion than an old-UI one until
 that's been exercised — same pattern as the
-old UI's own windowing history above.
+old UI's own windowing history above. The scroll loop now reports a
+shrinking page as an error instead of treating it as the end of results,
+and gives up after `nextMaxScrollPages` requests rather than paging
+forever. Pagination beyond one batch is still not live-verified — but a
+non-cumulative response would now surface as a loud error rather than a
+silently short document list.
 
 **flatex.de host/segment derivation (2026-07-27, GitHub issue #11):** a
 flatex.de user hit `HTTP 404` on `banking-flatex.de/accountOverviewFormAction.do`

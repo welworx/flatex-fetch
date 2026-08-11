@@ -109,6 +109,69 @@ func (c *Client) nextSetCustomDateRange(from, to time.Time) (string, error) {
 // that this capture's date range/account never happened to hit.
 const nextScrollStep = 5000
 
+// nextMaxScrollPages bounds the scroll loop. flatex-next has no cap of its
+// own that we know of (unlike the old UI's capLimit) and pagination beyond a
+// single batch has never been exercised against a real account, so this is a
+// backstop against paging forever on a portal that keeps claiming growth —
+// at the ~50 entries per batch one live capture showed, it allows far more
+// documents than any real archive range holds.
+// ponytail: fixed constant; promote to a flag only if a real account hits it.
+const nextMaxScrollPages = 100
+
+// nextScrollAll pages through scroll positions until the entry list stops
+// growing, starting from docs (the initial, unscrolled batch).
+//
+// Each response is expected to be cumulative — the whole list re-rendered
+// from the top — which is what the one live capture showed and what "docs =
+// next" below relies on. A page that comes back SHORTER than its predecessor
+// contradicts that, so it is reported rather than swallowed: the previous
+// behavior treated a short page as "no more results" and returned the
+// truncated list as if it were complete, which is silent data loss on an
+// unverified assumption. Whether flatex-next ever actually does this is
+// still unknown (see this file's header comment) — the point is that we
+// would now hear about it instead of quietly losing documents.
+//
+// stopEarly, if non-nil, ends paging as soon as it is satisfied — nextDownload
+// only needs to page until the row it wants is present.
+func (c *Client) nextScrollAll(docs []Document, stopEarly func([]Document) bool) ([]Document, error) {
+	if stopEarly != nil && stopEarly(docs) {
+		return docs, nil
+	}
+	scrollPos := nextScrollStep
+	for page := 0; page < nextMaxScrollPages; page++ {
+		form := url.Values{
+			fieldNextScrollPos:    {strconv.Itoa(scrollPos)},
+			fieldNextReadStateIdx: {idxNextReadStateAll},
+			fieldNextDateRangeIdx: {idxNextDateRangeCustom},
+			fieldNextReload:       {"true"},
+		}
+		body, err := c.postForm(c.archiveListPath, form)
+		if err != nil {
+			return nil, err
+		}
+		next, err := parseNextDocuments(body)
+		if err != nil {
+			return nil, err
+		}
+		if len(next) < len(docs) {
+			return nil, fmt.Errorf(
+				"flatex-next pagination: scrollposition %d returned %d entries, fewer than the previous %d — scroll responses may not be cumulative; please report this",
+				scrollPos, len(next), len(docs))
+		}
+		if len(next) == len(docs) {
+			return docs, nil // plateau: nothing further
+		}
+		docs = next
+		if stopEarly != nil && stopEarly(docs) {
+			return docs, nil
+		}
+		scrollPos += nextScrollStep
+	}
+	return nil, fmt.Errorf(
+		"flatex-next pagination: still growing after %d requests (%d entries) — giving up rather than paging forever",
+		nextMaxScrollPages, len(docs))
+}
+
 // nextListDocuments lists [from, to] for a flatex-next session: open the
 // archive, apply the date range, then keep requesting with an increasing
 // scrollposition until a request stops returning more entries than the
@@ -130,25 +193,9 @@ func (c *Client) nextListDocuments(from, to time.Time) ([]Document, error) {
 	}
 	c.logf("  parsed %d document(s) from initial response", len(docs))
 
-	for scrollPos := nextScrollStep; ; scrollPos += nextScrollStep {
-		form := url.Values{
-			fieldNextScrollPos:    {strconv.Itoa(scrollPos)},
-			fieldNextReadStateIdx: {idxNextReadStateAll},
-			fieldNextDateRangeIdx: {idxNextDateRangeCustom},
-			fieldNextReload:       {"true"},
-		}
-		body, err := c.postForm(c.archiveListPath, form)
-		if err != nil {
-			return nil, fmt.Errorf("list %s..%s: %w", from.Format("02.01.2006"), to.Format("02.01.2006"), err)
-		}
-		next, err := parseNextDocuments(body)
-		if err != nil {
-			return nil, fmt.Errorf("list %s..%s: %w", from.Format("02.01.2006"), to.Format("02.01.2006"), err)
-		}
-		if len(next) <= len(docs) {
-			break
-		}
-		docs = next
+	docs, err = c.nextScrollAll(docs, nil)
+	if err != nil {
+		return nil, fmt.Errorf("list %s..%s: %w", from.Format("02.01.2006"), to.Format("02.01.2006"), err)
 	}
 
 	for i := range docs {
@@ -185,25 +232,8 @@ func (c *Client) nextDownload(from, to time.Time, idx int) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	for scrollPos := nextScrollStep; !hasDocIndex(docs, idx); scrollPos += nextScrollStep {
-		form := url.Values{
-			fieldNextScrollPos:    {strconv.Itoa(scrollPos)},
-			fieldNextReadStateIdx: {idxNextReadStateAll},
-			fieldNextDateRangeIdx: {idxNextDateRangeCustom},
-			fieldNextReload:       {"true"},
-		}
-		body, err = c.postForm(c.archiveListPath, form)
-		if err != nil {
-			return "", err
-		}
-		next, err := parseNextDocuments(body)
-		if err != nil {
-			return "", err
-		}
-		if len(next) <= len(docs) {
-			break // no more growth; idx isn't reachable in this range
-		}
-		docs = next
+	if _, err := c.nextScrollAll(docs, func(d []Document) bool { return hasDocIndex(d, idx) }); err != nil {
+		return "", err
 	}
 
 	click := url.Values{
