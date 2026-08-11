@@ -159,7 +159,7 @@ func TestDownloadZipWithMultipleEntriesErrors(t *testing.T) {
 	}
 }
 
-func TestDownloadDedupAndCollision(t *testing.T) {
+func TestDownloadDedupAndOverwrite(t *testing.T) {
 	srv := downloadServer(t,
 		map[string][]byte{
 			"/banking-flatex.at/downloadData/1/doc-0.bin": []byte("%PDF-1.4 row0"),
@@ -336,5 +336,61 @@ func TestDownloadNoDownloadInResponse(t *testing.T) {
 	_, _, err := c.Download(testWindow.from, testWindow.to, 0, flatResolvePath(dir), map[string]bool{}, false)
 	if err == nil {
 		t.Fatal("expected error when response has no download command")
+	}
+}
+
+// fixedResolvePath sends every document to the same destination name — the
+// within-run collision a -format template can produce (e.g. two documents
+// sharing a month and profile).
+func fixedResolvePath(dir, name string) ResolvePath {
+	return func(string) (string, string) { return dir, name }
+}
+
+// TestDownloadWithinRunCollisionSuffixes covers writeFile's seen-map branch
+// and suffixed(): documents colliding on one destination within a single run
+// get _2/_3 suffixes rather than overwriting each other.
+func TestDownloadWithinRunCollisionSuffixes(t *testing.T) {
+	srv := downloadServer(t,
+		map[string][]byte{
+			"/banking-flatex.at/downloadData/1/doc-0.bin": []byte("%PDF-1.4 row0"),
+			"/banking-flatex.at/downloadData/1/doc-1.bin": []byte("%PDF-1.4 row1"),
+			"/banking-flatex.at/downloadData/1/doc-2.bin": []byte("%PDF-1.4 row2"),
+		},
+		nil,
+	)
+	c := newTestClient(t, srv)
+	dir := t.TempDir()
+	seen := map[string]bool{}
+
+	var paths []string
+	for idx := 0; idx < 3; idx++ {
+		p, skipped, err := c.Download(testWindow.from, testWindow.to, idx, fixedResolvePath(dir, "same.pdf"), seen, false)
+		if err != nil || skipped {
+			t.Fatalf("row %d: err=%v skipped=%v", idx, err, skipped)
+		}
+		paths = append(paths, p)
+	}
+
+	want := []string{
+		filepath.Join(dir, "same.pdf"),
+		filepath.Join(dir, "same_2.pdf"),
+		filepath.Join(dir, "same_3.pdf"),
+	}
+	for i, w := range want {
+		if paths[i] != w {
+			t.Fatalf("row %d wrote %q, want %q", i, paths[i], w)
+		}
+	}
+
+	// Every document's own bytes must survive — a collision must not let one
+	// document's content overwrite another's.
+	for i, p := range paths {
+		got, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if w := fmt.Sprintf("%%PDF-1.4 row%d", i); string(got) != w {
+			t.Fatalf("%s contains %q, want %q", p, got, w)
+		}
 	}
 }
