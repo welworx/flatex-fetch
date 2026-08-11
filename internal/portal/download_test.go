@@ -268,6 +268,13 @@ func TestDownloadHostileFilenameStaysInDestDir(t *testing.T) {
 			if filepath.Dir(p) != dir {
 				t.Fatalf("wrote %q, want a file directly inside %q", p, dir)
 			}
+			// sanitize() must strip separators from the server-supplied name.
+			// filepath.Dir(p) != dir alone cannot catch a missing backslash
+			// guard on Linux, where `\` is an ordinary character: the file
+			// would still land inside dir, just named "..\..\evil.pdf".
+			if b := filepath.Base(p); strings.ContainsAny(b, `\/`) {
+				t.Fatalf("resolved name %q still contains a path separator", b)
+			}
 			if _, err := os.Stat(p); err != nil {
 				t.Fatalf("stat %q: %v", p, err)
 			}
