@@ -131,6 +131,14 @@ const nextMaxScrollPages = 100
 // still unknown (see this file's header comment) — the point is that we
 // would now hear about it instead of quietly losing documents.
 //
+// Limit: this only catches a page that comes back SHORTER than its
+// predecessor. A fixed-size sliding window (e.g. always the newest 50
+// entries) would return same-length pages and read as a plateau on the very
+// first scroll, truncating silently — the length check cannot tell "no more
+// results" from "same size, different window" apart. Confirming that isn't
+// what flatex-next does needs a real account with more documents than one
+// batch, which no live run has had yet.
+//
 // stopEarly, if non-nil, ends paging as soon as it is satisfied — nextDownload
 // only needs to page until the row it wants is present.
 func (c *Client) nextScrollAll(docs []Document, stopEarly func([]Document) bool) ([]Document, error) {
@@ -153,6 +161,17 @@ func (c *Client) nextScrollAll(docs []Document, stopEarly func([]Document) bool)
 		if err != nil {
 			return nil, err
 		}
+		if len(next) == 0 && len(docs) > 0 {
+			// A response that rendered no listing at all is the portal
+			// declining to answer an out-of-range scrollposition, not a
+			// non-cumulative page — end of results, same as a plateau. A
+			// genuinely non-cumulative portal still returns entries, just
+			// different ones, so this keeps the detection below meaningful
+			// while removing a false positive that would fail every
+			// flatex-next listing, including the small ones that are the
+			// only shape ever confirmed live.
+			return docs, nil
+		}
 		if len(next) < len(docs) {
 			return nil, fmt.Errorf(
 				"flatex-next pagination: scrollposition %d returned %d entries, fewer than the previous %d — scroll responses may not be cumulative; please report this",
@@ -168,7 +187,7 @@ func (c *Client) nextScrollAll(docs []Document, stopEarly func([]Document) bool)
 		scrollPos += nextScrollStep
 	}
 	return nil, fmt.Errorf(
-		"flatex-next pagination: still growing after %d requests (%d entries) — giving up rather than paging forever",
+		"flatex-next pagination: still growing after %d requests (%d entries) — giving up rather than paging forever; try narrowing the date range",
 		nextMaxScrollPages, len(docs))
 }
 

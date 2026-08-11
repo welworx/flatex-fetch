@@ -317,6 +317,11 @@ func fetchProfile(p config.Profile, password, out, format, userAgent string, fro
 	// one would push -since-last's frontier (lastDocumentDate) past the
 	// failure — making the next run start after it and skip the failed
 	// document forever. Downloads continue; only the log is held back.
+	// Boundary: "newer" here only means newer within this run's own sorted
+	// slice. lastDocumentDate takes the max Date over the whole log, so a
+	// wide explicit -from/-to backfill that fails on an old document can
+	// still sit behind a frontier a previous run already pushed further
+	// ahead — this guard can't pull that frontier back.
 	//
 	// ponytail: an unconditional bool rather than tracking the failed date.
 	// The cost is that documents after a failure stay unlogged until a clean

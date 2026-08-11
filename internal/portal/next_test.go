@@ -255,8 +255,8 @@ func newNextTestClient(t *testing.T, srv *httptest.Server) *Client {
 	return c
 }
 
-// entries renders n cumulative flatex-next entries under one date header.
-func entries(n int) string {
+// nextEntriesHTML renders n cumulative flatex-next entries under one date header.
+func nextEntriesHTML(n int) string {
 	s := nextDateHeaderHTML("20.07.2026")
 	for i := 0; i < n; i++ {
 		s += nextEntryHTML(i, fmt.Sprintf("Dokument %d", i), false)
@@ -271,7 +271,7 @@ func entries(n int) string {
 func TestNextListDocumentsScrollPositionAdvances(t *testing.T) {
 	var mu sync.Mutex
 	var scrolls []string
-	srv := nextScrollServer(t, []string{entries(2), entries(4), entries(6), entries(6)}, &scrolls, &mu)
+	srv := nextScrollServer(t, []string{nextEntriesHTML(2), nextEntriesHTML(4), nextEntriesHTML(6), nextEntriesHTML(6)}, &scrolls, &mu)
 	c := newNextTestClient(t, srv)
 
 	docs, err := c.ListDocumentsDetailed(testWindow.from, testWindow.to)
@@ -303,7 +303,7 @@ func TestNextListDocumentsScrollPositionAdvances(t *testing.T) {
 func TestNextListDocumentsRejectsShrinkingPage(t *testing.T) {
 	var mu sync.Mutex
 	var scrolls []string
-	srv := nextScrollServer(t, []string{entries(4), entries(6), entries(2)}, &scrolls, &mu)
+	srv := nextScrollServer(t, []string{nextEntriesHTML(4), nextEntriesHTML(6), nextEntriesHTML(2)}, &scrolls, &mu)
 	c := newNextTestClient(t, srv)
 
 	_, err := c.ListDocumentsDetailed(testWindow.from, testWindow.to)
@@ -315,13 +315,35 @@ func TestNextListDocumentsRejectsShrinkingPage(t *testing.T) {
 	}
 }
 
+// TestNextListDocumentsEmptyReloadEndsPaging covers a reload response that
+// carries no replacePortions command at all — parseNextDocuments then
+// returns 0 documents with a nil error (see replacePortionsHTML), which
+// nextScrollAll must treat as the portal declining to answer an
+// out-of-range scrollposition (end of results), not as a shrinking,
+// possibly-non-cumulative page. Before the fix this hard-failed every
+// flatex-next listing, including small ones well under a single batch.
+func TestNextListDocumentsEmptyReloadEndsPaging(t *testing.T) {
+	var mu sync.Mutex
+	var scrolls []string
+	srv := nextScrollServer(t, []string{nextEntriesHTML(2), ""}, &scrolls, &mu)
+	c := newNextTestClient(t, srv)
+
+	docs, err := c.ListDocumentsDetailed(testWindow.from, testWindow.to)
+	if err != nil {
+		t.Fatalf("ListDocumentsDetailed: %v", err)
+	}
+	if len(docs) != 2 {
+		t.Fatalf("got %d documents, want 2 (the pre-scroll batch)", len(docs))
+	}
+}
+
 // TestNextListDocumentsScrollCapped bounds the loop: a portal that keeps
 // claiming growth must not page forever (each request is paced ~750ms in
 // production).
 func TestNextListDocumentsScrollCapped(t *testing.T) {
 	batches := make([]string, nextMaxScrollPages+5)
 	for i := range batches {
-		batches[i] = entries(i + 1)
+		batches[i] = nextEntriesHTML(i + 1)
 	}
 	var mu sync.Mutex
 	var scrolls []string

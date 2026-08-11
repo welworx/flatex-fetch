@@ -183,3 +183,55 @@ func TestFetchProfileSinceLastRetriesFailedDocument(t *testing.T) {
 		t.Fatalf("run 2: previously failed document was never written: %v", err)
 	}
 }
+
+// TestFetchProfileSkippedDocumentNotLoggedAfterEarlierFailure pins the other
+// half of the -since-last frontier fix: once an earlier document's failure
+// in this run has turned logging off, a later document that Download
+// reports as already-on-disk (wasSkipped) must not be backfilled into the
+// log either. If it were, lastDocumentDate would see it and move the
+// frontier past the still-unlogged failure — exactly the gap the "logging"
+// guard exists to prevent.
+func TestFetchProfileSkippedDocumentNotLoggedAfterEarlierFailure(t *testing.T) {
+	failing := testDoc(0, "2026-01-05", "January")
+	skippedNewer := testDoc(1, "2026-03-01", "March")
+
+	f := &fakePortal{
+		docs:    []portal.Document{failing, skippedNewer},
+		failIdx: map[int]error{0: portal.ErrChallenged},
+	}
+	installFakePortal(t, f)
+
+	out := t.TempDir()
+	p := config.Profile{Name: "main", Username: "alice", Domain: "flatex.at", Password: "pw"}
+	from := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC)
+
+	// Pre-create the newer document's file on disk so fakePortal.Download
+	// reports it as wasSkipped=true (already present) instead of downloading
+	// it fresh.
+	dir := filepath.Join(out, "main")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "doc-1.pdf"), []byte("%PDF-1.4 fake"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Documents are processed oldest-first, so the failure (January) is
+	// handled before the already-on-disk document (March).
+	if err := fetchProfile(p, p.Password, out, "", "", from, to, false, false, false); err == nil {
+		t.Fatal("expected an error for the failed document")
+	}
+
+	entries, err := readDownloadLog(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, group := range entries {
+		for _, e := range group {
+			if e.Name == skippedNewer.Name {
+				t.Fatalf("log contains an entry for the skipped newer document even though an earlier document in the same run failed: %+v", e)
+			}
+		}
+	}
+}
