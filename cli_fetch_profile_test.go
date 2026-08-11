@@ -125,3 +125,61 @@ func TestFetchProfileDownloadsOldestFirst(t *testing.T) {
 		}
 	}
 }
+
+// TestFetchProfileSinceLastRetriesFailedDocument pins the -since-last
+// frontier invariant. Run 1: an older document fails, a newer one succeeds.
+// Run 2 with -since-last must still re-list and retry the failed one — if
+// the newer document's log entry is allowed to advance lastDocumentDate past
+// the failure, the older document is skipped forever and silently lost.
+func TestFetchProfileSinceLastRetriesFailedDocument(t *testing.T) {
+	failing := testDoc(0, "2026-01-05", "January")
+	ok := testDoc(1, "2026-03-01", "March")
+
+	f := &fakePortal{
+		docs:    []portal.Document{failing, ok},
+		failIdx: map[int]error{0: portal.ErrChallenged},
+	}
+	installFakePortal(t, f)
+
+	out := t.TempDir()
+	p := config.Profile{Name: "main", Username: "alice", Domain: "flatex.at", Password: "pw"}
+	from := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC)
+
+	// Run 1: row 0 fails, row 1 succeeds. fetchProfile reports the failure.
+	if err := fetchProfile(p, p.Password, out, "", "", from, to, true, false, false); err == nil {
+		t.Fatal("run 1: expected an error for the failed document")
+	}
+	if len(f.downloads) != 2 {
+		t.Fatalf("run 1: downloads = %v, want both rows attempted", f.downloads)
+	}
+
+	// The frontier must not have moved past the failed document.
+	entries, err := readDownloadLog(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if last, found := lastDocumentDate(entries, "main"); found && last.After(failing.Date) {
+		t.Fatalf("frontier advanced to %s, past the failed document dated %s — the next -since-last run would skip it forever",
+			last.Format("2006-01-02"), failing.Date.Format("2006-01-02"))
+	}
+
+	// Run 2 with -since-last: the failed document must be listed and retried.
+	f.downloads = nil
+	f.failIdx = nil // the transient failure has cleared
+	if err := fetchProfile(p, p.Password, out, "", "", from, to, true, false, false); err != nil {
+		t.Fatalf("run 2: %v", err)
+	}
+	retried := false
+	for _, idx := range f.downloads {
+		if idx == 0 {
+			retried = true
+		}
+	}
+	if !retried {
+		t.Fatalf("run 2: downloads = %v, want the previously failed row 0 retried", f.downloads)
+	}
+	if _, err := os.Stat(filepath.Join(out, "main", "doc-0.pdf")); err != nil {
+		t.Fatalf("run 2: previously failed document was never written: %v", err)
+	}
+}

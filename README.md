@@ -31,7 +31,10 @@ fetch → parse pipeline.
 - **Works over any date range, even wide ones**: `-days`, explicit
   `-from`/`-to`, or `-since-last` (continue each profile from its newest
   fetched document) — wide ranges are split automatically so the portal's
-  own 100-document result limit doesn't cause silently missing documents
+  own 100-document result limit doesn't cause silently missing documents.
+  If a document fails to download, the resume point is held at that
+  document rather than advancing past it, so the next `-since-last` run
+  retries it.
 - **Handles multiple accounts**: manage several portal logins
   (`profile add|list|update|remove`) and fetch one or all of them in a single run
 - **Automation-ready**: no interactive prompts (env-var credentials),

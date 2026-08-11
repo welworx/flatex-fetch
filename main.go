@@ -78,7 +78,9 @@ FETCH/LIST FLAGS
   -format TEMPLATE   output path template relative to -out (default <profile>/<filename>)
   -since-last        fetch from each profile's latest already-fetched document date, in
                       <out>/.fetch-log.jsonl, through today (falls back to -days if no log yet;
-                      mutually exclusive with -days/-from/-to)
+                      mutually exclusive with -days/-from/-to). If a document fails to
+                      download, the resume point is held at that document rather than
+                      advancing past it, so the next -since-last run retries it.
   -all               re-download documents that already exist locally
   list also:
   -csv               output CSV instead of a table

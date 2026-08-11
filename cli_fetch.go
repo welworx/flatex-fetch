@@ -312,6 +312,17 @@ func fetchProfile(p config.Profile, password, out, format, userAgent string, fro
 	}
 	seen := map[string]bool{}
 	downloaded, skipped, failedDocs := 0, 0, 0
+	// logging goes false as soon as any document fails. Documents are sorted
+	// oldest-first, so every document after a failure is newer, and logging
+	// one would push -since-last's frontier (lastDocumentDate) past the
+	// failure — making the next run start after it and skip the failed
+	// document forever. Downloads continue; only the log is held back.
+	//
+	// ponytail: an unconditional bool rather than tracking the failed date.
+	// The cost is that documents after a failure stay unlogged until a clean
+	// run, so the next run re-fetches their bytes before skipping them on
+	// disk. That self-heals; a silent permanent gap does not.
+	logging := true
 	for _, d := range docs {
 		if !overwrite {
 			if _, ok := alreadyLogged(logEntries, p.Name, d); ok {
@@ -331,9 +342,11 @@ func fetchProfile(p config.Profile, password, out, format, userAgent string, fro
 		case errors.Is(err, portal.ErrChallenged):
 			fmt.Fprintf(os.Stderr, "profile %s: %s: blocked by bot-check challenge\n", p.Name, describeDocument(d))
 			failedDocs++
+			logging = false
 		case err != nil:
 			fmt.Fprintf(os.Stderr, "profile %s: %s: %v\n", p.Name, describeDocument(d), err)
 			failedDocs++
+			logging = false
 		case wasSkipped:
 			if verbose {
 				fmt.Fprintf(os.Stderr, "profile %s: skip (on disk): %s\n", p.Name, describeDocument(d))
@@ -346,7 +359,7 @@ func fetchProfile(p config.Profile, password, out, format, userAgent string, fro
 			// documents share a date/name (logKey is ambiguous, so
 			// alreadyLogged can't match) and would otherwise grow a
 			// duplicate line on every single run.
-			if !logHasPath(logEntries, path) {
+			if logging && !logHasPath(logEntries, path) {
 				if err := logDownload(out, p.Name, path, d); err != nil {
 					fmt.Fprintf(os.Stderr, "profile %s: %s: log write failed: %v\n", p.Name, describeDocument(d), err)
 				}
@@ -354,8 +367,10 @@ func fetchProfile(p config.Profile, password, out, format, userAgent string, fro
 			skipped++
 		default:
 			fmt.Println(path)
-			if err := logDownload(out, p.Name, path, d); err != nil {
-				fmt.Fprintf(os.Stderr, "profile %s: %s: log write failed: %v\n", p.Name, describeDocument(d), err)
+			if logging {
+				if err := logDownload(out, p.Name, path, d); err != nil {
+					fmt.Fprintf(os.Stderr, "profile %s: %s: log write failed: %v\n", p.Name, describeDocument(d), err)
+				}
 			}
 			downloaded++
 		}
