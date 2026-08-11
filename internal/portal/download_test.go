@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -216,6 +217,99 @@ func TestDownloadDetectsChallenge(t *testing.T) {
 	entries, _ := os.ReadDir(dir)
 	if len(entries) != 0 {
 		t.Fatal("challenge response was written to disk")
+	}
+}
+
+// dispositionServer serves the archive download flow with a caller-chosen
+// Content-Disposition on the file response, so tests can drive
+// resolveFilename with a hostile server-supplied filename.
+func dispositionServer(t *testing.T, disposition string, body []byte) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /banking-flatex.at/"+headerAreaAction, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"commands":[{"command":"replacePortions"}]}`)
+	})
+	mux.HandleFunc("POST /banking-flatex.at/"+archiveListAction, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"commands":[{"command":"download","location":"/banking-flatex.at/downloadData/1/doc.bin"}]}`)
+	})
+	mux.HandleFunc("GET /banking-flatex.at/downloadData/1/doc.bin", func(w http.ResponseWriter, r *http.Request) {
+		if disposition != "" {
+			w.Header().Set("Content-Disposition", disposition)
+		}
+		w.Write(body)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestDownloadHostileFilenameStaysInDestDir drives resolveFilename with
+// server-supplied filenames that try to escape the destination directory.
+// The portal is the untrusted side of this boundary: whatever it sends, the
+// file must land directly inside the directory ResolvePath chose.
+func TestDownloadHostileFilenameStaysInDestDir(t *testing.T) {
+	for _, tc := range []struct{ name, disposition string }{
+		{"parent traversal", `attachment; filename="../../evil.pdf"`},
+		{"absolute path", `attachment; filename="/etc/cron.d/evil.pdf"`},
+		{"windows separators", `attachment; filename="..\\..\\evil.pdf"`},
+		{"double dot", `attachment; filename=".."`},
+		{"single dot", `attachment; filename="."`},
+		{"empty", `attachment; filename=""`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := dispositionServer(t, tc.disposition, []byte("%PDF-1.4 payload"))
+			c := newTestClient(t, srv)
+			dir := t.TempDir()
+
+			p, skipped, err := c.Download(testWindow.from, testWindow.to, 0, flatResolvePath(dir), map[string]bool{}, false)
+			if err != nil || skipped {
+				t.Fatalf("Download: err=%v skipped=%v", err, skipped)
+			}
+			if filepath.Dir(p) != dir {
+				t.Fatalf("wrote %q, want a file directly inside %q", p, dir)
+			}
+			if _, err := os.Stat(p); err != nil {
+				t.Fatalf("stat %q: %v", p, err)
+			}
+		})
+	}
+}
+
+// TestDownloadZipEntryTraversalRejected covers writeZipEntry's guard: a zip
+// whose single entry name climbs out of the destination directory must be
+// refused outright, not sanitized into some nearby path and written anyway.
+func TestDownloadZipEntryTraversalRejected(t *testing.T) {
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	w, err := zw.Create("../../evil.pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write([]byte("%PDF-1.4 evil")); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := dispositionServer(t, "", buf.Bytes())
+	c := newTestClient(t, srv)
+	dir := t.TempDir()
+
+	_, _, err = c.Download(testWindow.from, testWindow.to, 0, flatResolvePath(dir), map[string]bool{}, false)
+	if err == nil {
+		t.Fatal("expected an error for a zip entry that escapes the destination directory")
+	}
+	if !strings.Contains(err.Error(), "unsafe zip entry name") {
+		t.Fatalf("err = %v, want it to name the unsafe zip entry", err)
+	}
+
+	found, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found) != 0 {
+		t.Fatalf("destination dir is not empty after a rejected zip: %v", found)
 	}
 }
 
