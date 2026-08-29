@@ -11,6 +11,22 @@ import (
 	"github.com/welworx/flatex-fetch/internal/portal"
 )
 
+func TestOutputFormatDescription(t *testing.T) {
+	cases := []struct {
+		csvOut, jsonOut bool
+		want            string
+	}{
+		{false, false, "table (default)"},
+		{true, false, "csv"},
+		{false, true, "json"},
+	}
+	for _, c := range cases {
+		if got := outputFormatDescription(c.csvOut, c.jsonOut); got != c.want {
+			t.Errorf("outputFormatDescription(%v, %v) = %q, want %q", c.csvOut, c.jsonOut, got, c.want)
+		}
+	}
+}
+
 func TestProfileFlagsValid(t *testing.T) {
 	cases := []struct {
 		name string

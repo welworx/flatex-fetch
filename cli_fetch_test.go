@@ -1,6 +1,7 @@
 package main
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -8,6 +9,48 @@ import (
 	"github.com/welworx/flatex-fetch/internal/config"
 	"github.com/welworx/flatex-fetch/internal/portal"
 )
+
+func TestOrDefault(t *testing.T) {
+	if got := orDefault("main", "first configured"); got != "main" {
+		t.Fatalf("orDefault(set) = %q, want the value unchanged", got)
+	}
+	if got := orDefault("", "first configured"); got != "first configured (default)" {
+		t.Fatalf("orDefault(empty) = %q, want label suffixed with (default)", got)
+	}
+}
+
+func TestRangeDescription(t *testing.T) {
+	from := time.Date(2026, 7, 6, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 7, 16, 0, 0, 0, 0, time.UTC)
+
+	if got := rangeDescription(7, from, to, false, true); got != "since last fetch per profile, through today (falls back to -days 7 if no log yet)" {
+		t.Fatalf("sinceLast: got %q", got)
+	}
+	if got, want := rangeDescription(7, from, to, true, false), "2026-07-06..2026-07-16 (explicit -days/-from/-to)"; got != want {
+		t.Fatalf("explicitRange: got %q, want %q", got, want)
+	}
+	if got, want := rangeDescription(7, from, to, false, false), "2026-07-06..2026-07-16 (last 7 days, default)"; got != want {
+		t.Fatalf("default: got %q, want %q", got, want)
+	}
+}
+
+func TestDocumentPathResolver(t *testing.T) {
+	d := portal.Document{Date: time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)}
+
+	// No -format: reproduces the historical out/profile/<portal filename> layout.
+	resolve := documentPathResolver("/out", "", "alice", d)
+	dir, name := resolve("Kontoauszug.pdf")
+	if want := filepath.Join("/out", "alice"); dir != want || name != "Kontoauszug.pdf" {
+		t.Fatalf("no-format: got dir=%q name=%q, want dir=%q name=%q", dir, name, want, "Kontoauszug.pdf")
+	}
+
+	// -format: template renders using profile/date, filename extension stripped.
+	resolve = documentPathResolver("/out", "<profile>/<date>/<filename>.pdf", "alice", d)
+	dir, name = resolve("Kontoauszug.pdf")
+	if want := filepath.Join("/out", "alice", "2026-07-10"); dir != want || name != "Kontoauszug.pdf" {
+		t.Fatalf("with-format: got dir=%q name=%q, want dir=%q name=%q", dir, name, want, "Kontoauszug.pdf")
+	}
+}
 
 func TestDescribeDocument(t *testing.T) {
 	d := portal.Document{
