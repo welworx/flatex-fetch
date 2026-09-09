@@ -67,21 +67,20 @@ this fix. Pagination beyond one batch is still not live-verified, so
 whether flatex-next's real behavior is cumulative-growing, a sliding
 window, or something else is still unknown.
 
-**flatex.de host/segment derivation (2026-07-27, GitHub issue #11):** a
-flatex.de user hit `HTTP 404` on `banking-flatex.de/accountOverviewFormAction.do`
-— the account may be a flatex-next one that our then-hardcoded
-`next-desktop.at` detection couldn't recognize, falling through to the old
-UI's path and 404ing. Both the portal host (`konto.<domain>`, was a fixed
-`konto.flatex.at` literal) and the flatex-next segment
-(`nextDesktopSegmentFor` in `internal/portal/portal.go`, was a fixed
-`next-desktop.at` literal) are now derived from the profile's `domain`
-instead. Re-verified live against the real flatex.at + flatex-next account
-after the refactor — no regression from switching host/segment to be
-domain-derived. This assumes flatex.de mirrors flatex.at's pattern exactly
-(`konto.flatex.de`, `next-desktop.de`) — still **unconfirmed live**; no
-flatex.de account has been tested against this. If the issue reporter's
-retry still 404s, the actual redirect URL from his run is needed to find
-the real pattern.
+**German classical paths (2026-09-09):** the public page
+https://www.flatex.de/plattformen/flatex-classic/ embeds
+`https://konto.flatex.de/login/loginIFrameFormAction.do`; that iframe's
+form uses `action="sso" method="post"` with `userId`, `password`,
+`deviceDetails`, `windowWidth`, and `windowHeight` fields. It also offers
+an optional `sessionPassword`, which this document downloader does not
+need. The public classic page links password recovery under
+`/banking-flatex/`, and the German classic document archive was observed at
+`/banking-flatex/documentArchiveListFormAction.do`. German paths therefore
+use `/login/` and `/banking-flatex/`, not `/login.at/` or
+`/banking-flatex.de/`. `TestCountryLoginAndArchiveRoutes` exercises these
+literal routes and Austria's unchanged routes using a mock server.
+Authenticated German login, listing, and download still require a live
+test. German flatex-next path assumptions remain unverified.
 
 ## Build
 

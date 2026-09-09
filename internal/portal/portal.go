@@ -1,4 +1,4 @@
-// Package portal implements the flatex.at web portal protocol: HTTP login,
+// Package portal implements the Flatex web portal protocol: HTTP login,
 // document-archive listing, and PDF download. Pure net/http — no browser.
 package portal
 
@@ -59,13 +59,16 @@ const (
 // so a Client is slow by design, not by accident.
 type Client struct {
 	hc                  *http.Client
-	baseURL             string // https://konto.<domain>; tests point this at httptest
+	baseURL             string   // https://konto.<domain>; tests point this at httptest
+	allowedOrigin       *url.URL // fixed by New; only package tests override this
 	ua                  string
+	loginPagePath       string
+	ssoPath             string
 	delay               time.Duration                    // requestDelay; tests set 0
-	archiveListPath     string                           // /banking-<domain>/documentArchiveListFormAction.do, repointed to flatex-next's overviewFormAction.do once detected
-	accountOverviewPath string                           // /banking-<domain>/accountOverviewFormAction.do
-	headerAreaPath      string                           // /banking-<domain>/headerAreaFormAction.do
-	ajaxCommandPath     string                           // /banking-<domain>/ajaxCommandServlet, repointed to flatex-next's once detected
+	archiveListPath     string                           // classical documentArchiveListFormAction.do, repointed to flatex-next's overviewFormAction.do once detected
+	accountOverviewPath string                           // classical accountOverviewFormAction.do
+	headerAreaPath      string                           // classical headerAreaFormAction.do
+	ajaxCommandPath     string                           // classical ajaxCommandServlet, repointed to flatex-next's once detected
 	nextDesktopSegment  string                           // e.g. "next-desktop.at"; see nextDesktopSegmentFor
 	tokenID             string                           // server-issued, extracted from response bodies
 	windowID            string                           // client-generated once per Client, not server-issued
@@ -82,12 +85,14 @@ func (c *Client) logf(format string, args ...any) {
 	}
 }
 
-// New returns a client for a portal domain like "flatex.at" (default and
-// only verified target; "flatex.de" is accepted but untested). Both the
-// host and flatex-next's path segment are derived from domain — see
-// portalHostPrefix and nextDesktopSegmentFor. An empty userAgent selects
-// the built-in browser default.
+// New returns a client for a portal domain like "flatex.at" (default) or
+// "flatex.de". Country-specific login and classical banking paths are
+// selected by portalSegmentsFor. Only Austria has been verified end to end.
+// An empty userAgent selects the built-in browser default.
 func New(domain, userAgent string) (*Client, error) {
+	if domain != "flatex.at" && domain != "flatex.de" {
+		return nil, errors.New("unsupported portal domain: use flatex.at or flatex.de")
+	}
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		return nil, err
@@ -95,18 +100,25 @@ func New(domain, userAgent string) (*Client, error) {
 	if userAgent == "" {
 		userAgent = DefaultUserAgent
 	}
-	return &Client{
+	loginSegment, bankingSegment := portalSegmentsFor(domain)
+	c := &Client{
 		hc:                  &http.Client{Jar: jar, Timeout: 60 * time.Second},
 		baseURL:             "https://" + portalHostPrefix + domain,
 		ua:                  userAgent,
+		loginPagePath:       "/" + loginSegment + "/" + loginPageAction,
+		ssoPath:             "/" + loginSegment + "/" + ssoAction,
 		delay:               requestDelay,
-		archiveListPath:     "/banking-" + domain + "/" + archiveListAction,
-		accountOverviewPath: "/banking-" + domain + "/" + accountOverviewAction,
-		headerAreaPath:      "/banking-" + domain + "/" + headerAreaAction,
-		ajaxCommandPath:     "/banking-" + domain + "/" + ajaxCommandAction,
+		archiveListPath:     "/" + bankingSegment + "/" + archiveListAction,
+		accountOverviewPath: "/" + bankingSegment + "/" + accountOverviewAction,
+		headerAreaPath:      "/" + bankingSegment + "/" + headerAreaAction,
+		ajaxCommandPath:     "/" + bankingSegment + "/" + ajaxCommandAction,
 		nextDesktopSegment:  nextDesktopSegmentFor(domain),
 		windowID:            newWindowID(),
-	}, nil
+	}
+	c.allowedOrigin, _ = url.Parse(c.baseURL)
+	c.hc.CheckRedirect = c.checkRedirect
+	c.hc.Transport = &documentTransport{client: c, next: http.DefaultTransport, login: "/" + loginSegment + "/", banking: "/" + bankingSegment + "/", desktop: "/" + c.nextDesktopSegment + "/"}
+	return c, nil
 }
 
 // nextDesktopSegmentFor derives flatex-next's banking-app path segment from
@@ -142,6 +154,9 @@ func (c *Client) pace() {
 // (after Go's default http.Client has followed any redirects) — Login uses
 // this to tell the old UI and flatex-next apart.
 func (c *Client) do(req *http.Request, ajax bool) (string, *url.URL, error) {
+	if err := c.checkDestination(req.URL); err != nil {
+		return "", nil, err
+	}
 	c.pace()
 	req.Header.Set("User-Agent", c.ua)
 	if ajax {
@@ -260,9 +275,9 @@ func (c *Client) postFormOnce(path string, form url.Values) (string, error) {
 // XHR call (confirmed from live capture: the fetchCachedPage resync GET
 // carries none of those headers).
 func (c *Client) plainGet(path string) (string, error) {
-	u := path
-	if strings.HasPrefix(u, "/") {
-		u = c.baseURL + u
+	u, err := c.resolveLocation(path)
+	if err != nil {
+		return "", err
 	}
 	req, err := http.NewRequest(http.MethodGet, u, nil)
 	if err != nil {
@@ -349,19 +364,19 @@ func deviceDataJSON(ua string) (string, error) {
 	return string(dd), err
 }
 
-// Login POSTs credentials to /login.at/sso. This is a plain HTML form
+// Login POSTs credentials to the country-specific login form action. This is a plain HTML form
 // submit, not an AJAX call: the real form's onsubmit handler calls
 // event.preventDefault() only to defer to the native $form[0].submit(),
 // which bypasses jQuery's AJAX layer entirely (confirmed from the login
 // form's own HTML/JS) — so this request carries none of the
 // X-Requested-With/X-tokenId/X-windowId headers the archive endpoints use.
-// This part — the login page GET, the /login.at/sso POST, and its fields —
+// This part — the login page GET, the credentials POST, and its fields —
 // is identical for the old UI and flatex-next (confirmed from both
 // accounts' capture bytes); the two diverge only in where the POST's
 // redirect chain (auto-followed by net/http's default client) lands, which
 // is what Login inspects to pick a variant and finish accordingly.
 func (c *Client) Login(username, password string) error {
-	if _, err := c.getAjax(pathLoginPage); err != nil {
+	if _, err := c.getAjax(c.loginPagePath); err != nil {
 		return fmt.Errorf("login: loading login page: %w", err)
 	}
 
@@ -376,7 +391,7 @@ func (c *Client) Login(username, password string) error {
 		fieldWindowWidth:   {"1470"},
 		fieldWindowHeight:  {"956"},
 	}
-	req, err := http.NewRequest(http.MethodPost, c.baseURL+pathSSO, strings.NewReader(form.Encode()))
+	req, err := http.NewRequest(http.MethodPost, c.baseURL+c.ssoPath, strings.NewReader(form.Encode()))
 	if err != nil {
 		return err
 	}

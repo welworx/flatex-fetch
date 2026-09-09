@@ -28,10 +28,10 @@ func TestLoginDetectsNextVariant(t *testing.T) {
 	var gotResumeLogin atomic.Bool
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET "+pathLoginPage, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /login.at/loginIFrameFormAction.do", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `webcore.setTokenId( "tok-1");`)
 	})
-	mux.HandleFunc("POST "+pathSSO, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /login.at/sso", func(w http.ResponseWriter, r *http.Request) {
 		http.SetCookie(w, &http.Cookie{Name: "flatexSession", Value: "x", Path: "/"})
 		http.Redirect(w, r, "/next-desktop.at/loginCommand?loginData=abc123", http.StatusFound)
 	})

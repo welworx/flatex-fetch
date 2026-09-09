@@ -3,6 +3,7 @@ package portal
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -35,6 +36,10 @@ func downloadServer(t *testing.T, content map[string][]byte, contentType map[str
 		fmt.Fprint(w, `{"commands":[{"command":"replacePortions"}]}`)
 	})
 	mux.HandleFunc("POST /banking-flatex.at/"+archiveListAction, func(w http.ResponseWriter, r *http.Request) {
+		if r.FormValue(fieldApplyFilter) == "true" {
+			fmt.Fprint(w, `{"commands":[{"command":"replacePortions"}]}`)
+			return
+		}
 		if r.FormValue(fieldDownloadClicked) != "true" {
 			http.Error(w, "no download requested", http.StatusBadRequest)
 			return
@@ -59,7 +64,7 @@ func downloadServer(t *testing.T, content map[string][]byte, contentType map[str
 		}
 		w.Write(body)
 	})
-	mux.HandleFunc("/challenge", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/banking-flatex.at/downloadData/1/challenge.pdf", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusServiceUnavailable)
 		fmt.Fprint(w, `<html>myracloud verification</html>`)
@@ -90,6 +95,101 @@ func TestDownloadSinglePDF(t *testing.T) {
 	}
 	if string(got) != "%PDF-1.4 fake content" {
 		t.Fatalf("content = %q", got)
+	}
+}
+
+// Classic archive row selections belong to the table produced by the last
+// Apply Filter action. Date fields submitted with Download alone do not
+// establish that table. Windowed listing leaves a different window active,
+// so downloading an earlier window must explicitly apply its filter first.
+func TestDownloadReappliesListedWindowBeforeSelecting(t *testing.T) {
+	for _, domain := range []string{"flatex.at", "flatex.de"} {
+		for _, idx := range []int{0, 2} {
+			t.Run(fmt.Sprintf("%s/row%d", domain, idx), func(t *testing.T) {
+				prefix := "/banking-flatex.at/"
+				if domain == "flatex.de" {
+					prefix = "/banking-flatex/"
+				}
+				first := time.Date(2025, 3, 1, 0, 0, 0, 0, time.UTC)
+				last := time.Date(2025, 12, 1, 0, 0, 0, 0, time.UTC)
+				windows := map[string][]string{
+					"01.03.2025": {"first-0.pdf", "first-1.pdf", "first-2.pdf"},
+					"01.12.2025": {"last-0.pdf"},
+				}
+				var active []string
+				var emptyZip bytes.Buffer
+				if err := zip.NewWriter(&emptyZip).Close(); err != nil {
+					t.Fatal(err)
+				}
+				mux := http.NewServeMux()
+				mux.HandleFunc("POST "+prefix+"headerAreaFormAction.do", func(w http.ResponseWriter, _ *http.Request) {
+					fmt.Fprint(w, `{"commands":[]}`)
+				})
+				mux.HandleFunc("POST "+prefix+"documentArchiveListFormAction.do", func(w http.ResponseWriter, r *http.Request) {
+					if r.FormValue("applyFilterButton.clicked") == "true" {
+						date := r.FormValue("dateRangeComponent.startDate.text")
+						if r.FormValue("dateRangeComponent.endDate.text") != date {
+							t.Error("download did not restore the exact listed window")
+						}
+						active = windows[date]
+						var rows strings.Builder
+						rows.WriteString(`<div id="documentArchiveListTable">`)
+						for i, name := range active {
+							fmt.Fprintf(&rows, `<tr class="Read" id="TID1_%d-0"><td class="C2">%s</td><td class="C4"><div class="Ellipsis">%s</div></td></tr>`, i, date, name)
+						}
+						rows.WriteString(`</div>`)
+						if err := json.NewEncoder(w).Encode(map[string]any{"commands": []any{map[string]any{
+							"command": "replacePortions", "deltasToApply": []string{"documentArchiveListTable", rows.String()},
+						}}}); err != nil {
+							t.Error(err)
+						}
+						return
+					}
+					if r.FormValue("btnDocumentDownload.clicked") != "true" {
+						t.Error("unexpected archive action")
+						http.Error(w, "unexpected archive action", http.StatusBadRequest)
+						return
+					}
+					name := "empty.zip"
+					for i, candidate := range active {
+						if r.FormValue(fmt.Sprintf("documentArchiveListTable.rowSelectionSupport[%d].checked", i)) == "on" {
+							name = candidate
+						}
+					}
+					fmt.Fprintf(w, `{"commands":[{"command":"download","location":%q}]}`, prefix+"downloadData/1/"+name)
+				})
+				mux.HandleFunc("GET "+prefix+"downloadData/1/", func(w http.ResponseWriter, r *http.Request) {
+					name := filepath.Base(r.URL.Path)
+					if name == "empty.zip" {
+						w.Header().Set("Content-Type", "application/zip")
+						w.Write(emptyZip.Bytes())
+						return
+					}
+					w.Header().Set("Content-Type", "application/pdf")
+					fmt.Fprintf(w, "%%PDF-1.4 %s", name)
+				})
+				srv := httptest.NewServer(mux)
+				defer srv.Close()
+				c := newTestClient(t, srv, domain)
+				docs, err := c.ListDocumentsDetailed(first, first)
+				if err != nil || len(docs) != 3 {
+					t.Fatalf("first listing: %d documents, err=%v", len(docs), err)
+				}
+				if _, err := c.ListDocumentsDetailed(last, last); err != nil {
+					t.Fatal(err)
+				}
+				doc := docs[idx]
+				path, skipped, err := c.Download(doc.WindowFrom, doc.WindowTo, doc.Index, flatResolvePath(t.TempDir()), map[string]bool{}, false)
+				if err != nil || skipped {
+					t.Fatalf("Download: skipped=%v err=%v", skipped, err)
+				}
+				got, err := os.ReadFile(path)
+				want := "%PDF-1.4 " + doc.Name
+				if err != nil || string(got) != want {
+					t.Fatalf("downloaded content=%q, want %q; err=%v", got, want, err)
+				}
+			})
+		}
 	}
 }
 
@@ -198,9 +298,9 @@ func TestDownloadDetectsChallenge(t *testing.T) {
 		fmt.Fprint(w, `{"commands":[{"command":"replacePortions"}]}`)
 	})
 	mux.HandleFunc("/banking-flatex.at/"+archiveListAction, func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `{"commands":[{"command":"download","location":"/challenge"}]}`)
+		fmt.Fprint(w, `{"commands":[{"command":"download","location":"/banking-flatex.at/downloadData/1/challenge.pdf"}]}`)
 	})
-	mux.HandleFunc("/challenge", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/banking-flatex.at/downloadData/1/challenge.pdf", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusServiceUnavailable)
 		fmt.Fprint(w, `<html>myracloud verification</html>`)

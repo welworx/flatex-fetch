@@ -152,7 +152,10 @@ func (c *Client) resolveDownloadLocation(from, to time.Time, idx int) (string, e
 	if c.variant == variantNext {
 		return c.nextDownload(from, to, idx)
 	}
-	if err := c.ensureArchivePage(); err != nil {
+	// Row selections refer to the table built by Apply Filter. Sending
+	// dates with the Download click does not establish that table first;
+	// windowed listing may have left a different range active.
+	if _, err := c.filterArchive(from, to); err != nil {
 		return "", err
 	}
 	form := archiveFilterForm(from, to)
@@ -170,13 +173,16 @@ func (c *Client) resolveDownloadLocation(from, to time.Time, idx int) (string, e
 // a bare PDF or a zip bundle, depending on how many documents the portal
 // packaged.
 func (c *Client) fetchLocation(loc string, resolvePath ResolvePath, seen map[string]bool, overwrite bool) (string, bool, error) {
-	u := loc
-	if strings.HasPrefix(u, "/") {
-		u = c.baseURL + u
+	u, err := c.resolveLocation(loc)
+	if err != nil {
+		return "", false, err
 	}
 	c.pace()
 	req, err := http.NewRequest(http.MethodGet, u, nil)
 	if err != nil {
+		return "", false, err
+	}
+	if err := c.checkDestination(req.URL); err != nil {
 		return "", false, err
 	}
 	req.Header.Set("User-Agent", c.ua)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sort"
 	"strings"
 	"testing"
@@ -12,23 +13,33 @@ import (
 )
 
 // newTestClient points a Client at an httptest server with pacing off.
-func newTestClient(t *testing.T, srv *httptest.Server) *Client {
+func newTestClient(t *testing.T, srv *httptest.Server, domains ...string) *Client {
 	t.Helper()
-	c, err := New("flatex.at", "")
+	domain := "flatex.at"
+	if len(domains) > 0 {
+		domain = domains[0]
+	}
+	c, err := New(domain, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	c.baseURL = srv.URL
+	// Deliberate test-only seam: permit this local mock origin. Production
+	// clients remain pinned to the HTTPS origin selected by New.
+	c.allowedOrigin, err = url.Parse(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
 	c.delay = 0
 	return c
 }
 
 func TestLoginSuccess(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET "+pathLoginPage, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /login.at/loginIFrameFormAction.do", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `webcore.setTokenId( "tok-1");`)
 	})
-	mux.HandleFunc("POST "+pathSSO, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /login.at/sso", func(w http.ResponseWriter, r *http.Request) {
 		if r.FormValue(fieldUserID) != "alice" || r.FormValue(fieldPassword) != "s3cret" {
 			w.WriteHeader(http.StatusForbidden)
 			return
@@ -58,10 +69,10 @@ func TestLoginSuccess(t *testing.T) {
 
 func TestLoginBadCredentials(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET "+pathLoginPage, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /login.at/loginIFrameFormAction.do", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `webcore.setTokenId( "tok-1");`)
 	})
-	mux.HandleFunc("POST "+pathSSO, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /login.at/sso", func(w http.ResponseWriter, r *http.Request) {
 		// no session cookie on bad credentials
 	})
 	srv := httptest.NewServer(mux)
@@ -76,10 +87,10 @@ func TestLoginBadCredentials(t *testing.T) {
 func TestLoginPostHasNoAjaxHeaders(t *testing.T) {
 	var gotXRequestedWith, gotXTokenID string
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET "+pathLoginPage, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /login.at/loginIFrameFormAction.do", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `webcore.setTokenId( "tok-1");`)
 	})
-	mux.HandleFunc("POST "+pathSSO, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /login.at/sso", func(w http.ResponseWriter, r *http.Request) {
 		gotXRequestedWith = r.Header.Get("X-Requested-With")
 		gotXTokenID = r.Header.Get("X-tokenId")
 		http.SetCookie(w, &http.Cookie{Name: "flatexSession", Value: "x", Path: "/"})
@@ -110,10 +121,10 @@ func TestLoginPostHasNoAjaxHeaders(t *testing.T) {
 func TestUserAgentSent(t *testing.T) {
 	gotUA := ""
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET "+pathLoginPage, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /login.at/loginIFrameFormAction.do", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `webcore.setTokenId( "tok-1");`)
 	})
-	mux.HandleFunc("POST "+pathSSO, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /login.at/sso", func(w http.ResponseWriter, r *http.Request) {
 		gotUA = r.Header.Get("User-Agent")
 		http.SetCookie(w, &http.Cookie{Name: "flatexSession", Value: "x", Path: "/"})
 	})
