@@ -324,10 +324,30 @@ func writeFile(name string, content []byte, resolvePath ResolvePath, seen map[st
 	if err := os.MkdirAll(destDir, 0o700); err != nil {
 		return "", false, err
 	}
-	if err := os.WriteFile(dest, content, 0o600); err != nil {
-		os.Remove(dest)
+	if err := writeDocumentFile(dest, bytes.NewReader(content)); err != nil {
 		return "", false, err
 	}
 	seen[dest] = true
 	return dest, false, nil
+}
+
+// writeDocumentFile publishes a document only after its complete contents
+// have been written. A failed write leaves any previous document untouched.
+func writeDocumentFile(dest string, content io.Reader) error {
+	tmp, err := os.CreateTemp(filepath.Dir(dest), ".flatex-fetch-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	defer tmp.Close()
+	if _, err := io.Copy(tmp, content); err != nil {
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), dest)
 }

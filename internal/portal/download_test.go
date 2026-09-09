@@ -5,12 +5,14 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/iotest"
 	"time"
 )
 
@@ -392,5 +394,59 @@ func TestDownloadWithinRunCollisionSuffixes(t *testing.T) {
 		if w := fmt.Sprintf("%%PDF-1.4 row%d", i); string(got) != w {
 			t.Fatalf("%s contains %q, want %q", p, got, w)
 		}
+	}
+}
+
+func TestDocumentWriteFailurePreservesDestination(t *testing.T) {
+	for _, existing := range []bool{false, true} {
+		t.Run(fmt.Sprint(existing), func(t *testing.T) {
+			dir := t.TempDir()
+			dest := filepath.Join(dir, "doc.pdf")
+			old := []byte("%PDF previous complete document")
+			if existing {
+				if err := os.WriteFile(dest, old, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			failure := errors.New("interrupted input")
+			content := io.MultiReader(strings.NewReader("%PDF partial"), iotest.ErrReader(failure))
+			if err := writeDocumentFile(dest, content); !errors.Is(err, failure) {
+				t.Fatalf("got %v; want input failure", err)
+			}
+			got, err := os.ReadFile(dest)
+			if existing {
+				if err != nil || !bytes.Equal(got, old) {
+					t.Fatalf("original changed: %q %v", got, err)
+				}
+			} else if !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("partial final file exists: %v", err)
+			}
+			entries, err := os.ReadDir(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := 0
+			if existing {
+				want = 1
+			}
+			if len(entries) != want {
+				t.Fatalf("temporary files not cleaned up: %v", entries)
+			}
+			complete := []byte("%PDF finished %%EOF")
+			if err := writeDocumentFile(dest, bytes.NewReader(complete)); err != nil {
+				t.Fatal(err)
+			}
+			got, err = os.ReadFile(dest)
+			if err != nil || !bytes.Equal(got, complete) {
+				t.Fatalf("retry failed: %q %v", got, err)
+			}
+			info, err := os.Stat(dest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if info.Mode().Perm()&0077 != 0 {
+				t.Fatalf("document is accessible to other users: %v", info.Mode())
+			}
+		})
 	}
 }
