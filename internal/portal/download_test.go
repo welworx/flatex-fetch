@@ -394,3 +394,74 @@ func TestDownloadWithinRunCollisionSuffixes(t *testing.T) {
 		}
 	}
 }
+
+func TestCollisionResumeAndOverwrite(t *testing.T) {
+	dir := t.TempDir()
+	resolve := fixedResolvePath(dir, "same.pdf")
+	first, second := []byte("%PDF first"), []byte("%PDF second")
+	if _, _, err := writeFile("ignored.pdf", first, resolve, map[string]bool{}, false); err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	if _, skipped, err := writeFile("ignored.pdf", first, resolve, seen, false); err != nil || !skipped {
+		t.Fatalf("resume first: skipped=%v err=%v", skipped, err)
+	}
+	path, skipped, err := writeFile("ignored.pdf", second, resolve, seen, false)
+	if err != nil || skipped || filepath.Base(path) != "same_2.pdf" {
+		t.Fatalf("resume second: path=%s skipped=%v err=%v", path, skipped, err)
+	}
+	// A completed run must reuse both names, even if rows arrive reversed.
+	seen = map[string]bool{}
+	for _, content := range [][]byte{second, first} {
+		if _, skipped, err := writeFile("ignored.pdf", content, resolve, seen, false); err != nil || !skipped {
+			t.Fatalf("repeat: skipped=%v err=%v", skipped, err)
+		}
+	}
+	// Explicit replacement reuses the collision suffix instead of growing it.
+	seen = map[string]bool{}
+	for i, content := range [][]byte{first, second} {
+		p, skipped, err := writeFile("ignored.pdf", content, resolve, seen, true)
+		want := "same.pdf"
+		if i == 1 {
+			want = "same_2.pdf"
+		}
+		if err != nil || skipped || filepath.Base(p) != want {
+			t.Fatalf("overwrite: path=%s skipped=%v err=%v", p, skipped, err)
+		}
+	}
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 2 {
+		t.Fatalf("got %d files; want two", len(files))
+	}
+}
+
+func TestDifferentExistingBytesAreNotAcceptedAsDownloaded(t *testing.T) {
+	dir := t.TempDir()
+	resolve := fixedResolvePath(dir, "doc.pdf")
+	original := []byte("%PDF partial")
+	if err := os.WriteFile(filepath.Join(dir, "doc.pdf"), original, 0600); err != nil {
+		t.Fatal(err)
+	}
+	complete := []byte("%PDF complete %%EOF")
+	path, skipped, err := writeFile("ignored.pdf", complete, resolve, map[string]bool{}, false)
+	if err != nil || skipped {
+		t.Fatalf("skipped=%v err=%v", skipped, err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, complete) {
+		t.Fatal("complete replacement not saved")
+	}
+	got, err = os.ReadFile(filepath.Join(dir, "doc.pdf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, original) {
+		t.Fatal("different preexisting file overwritten")
+	}
+}
