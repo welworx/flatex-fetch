@@ -15,14 +15,41 @@ var templateTokenRe = regexp.MustCompile(`<([^>]+)>`)
 // placeholders) are both accepted.
 var validTemplateToken = regexp.MustCompile(`^(profile|filename|original filename|org filename|date|date .+)$`)
 
-// validatePathTemplate rejects unrecognized <token> placeholders in a
-// -format template so a typo fails fast at flag-parse time instead of
-// silently producing a literal "<typo>" path component after logging in.
+// validatePathTemplate rejects unknown tokens and paths outside -out
+// before logging in. Token values cannot introduce directory separators.
 func validatePathTemplate(tmpl string) error {
 	for _, m := range templateTokenRe.FindAllStringSubmatch(tmpl, -1) {
 		if !validTemplateToken.MatchString(m[1]) {
 			return fmt.Errorf("unknown -format token <%s>", m[1])
 		}
+	}
+	// Validate the rendered shape too: date layouts may themselves introduce
+	// directories, while profile/filename substitutions are single components.
+	rendered := templateTokenRe.ReplaceAllStringFunc(tmpl, func(tok string) string {
+		return renderToken(tok[1:len(tok)-1], "profile", time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC), "filename")
+	})
+	if !localOutputPath(rendered) {
+		return fmt.Errorf("-format must be a relative path without parent-directory components")
+	}
+	return nil
+}
+
+// localOutputPath rejects traversal and portable absolute-path spellings.
+func localOutputPath(s string) bool {
+	if !filepath.IsLocal(s) || strings.ContainsAny(s, "\\:\x00") {
+		return false
+	}
+	for _, component := range strings.Split(s, "/") {
+		if component == ".." {
+			return false
+		}
+	}
+	return true
+}
+
+func validateProfileName(name string) error {
+	if strings.TrimSpace(name) == "" || strings.TrimSpace(name) != name || name == "." || !localOutputPath(name) || strings.Contains(name, "/") {
+		return fmt.Errorf("profile name %q must be a single directory name (not . or ..), without surrounding spaces", name)
 	}
 	return nil
 }
@@ -73,7 +100,8 @@ func pathSafe(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.ReplaceAll(s, "/", "_")
 	s = strings.ReplaceAll(s, "\\", "_")
-	if s == "" {
+	s = strings.ReplaceAll(s, ":", "_")
+	if s == "" || s == "." || s == ".." {
 		s = "unknown"
 	}
 	return s

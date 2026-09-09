@@ -50,6 +50,9 @@ func promptLine(prompt string) (string, error) {
 }
 
 func profileAdd(dir, name, domain, username, password string) error {
+	if err := validateProfileName(name); err != nil {
+		return err
+	}
 	pass, err := readPassphrase(!config.CredentialsExist(dir))
 	if err != nil {
 		return err
@@ -170,6 +173,10 @@ func runProfile(args []string) int {
 			return usage()
 		}
 		name := args[1]
+		if err := validateProfileName(name); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			return 2
+		}
 		if domain == "" {
 			domain = "flatex.at"
 		}

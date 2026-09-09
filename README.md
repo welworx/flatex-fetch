@@ -164,7 +164,9 @@ available, `2` on error. `-y` skips the prompt; combined with `-check`,
 
 `-format` replaces the fixed `<profile>/<filename>` layout with a template,
 still rooted at `-out`. Placeholders are substituted per document and split
-on `/` into directories:
+on `/` into directories. Absolute paths and `..` directory components are
+rejected before login. Profile names must be a single directory name, without
+leading or trailing spaces, and cannot be `.` or `..`:
 
 | Token | Value |
 |---|---|

@@ -251,7 +251,7 @@ func describeDocument(d portal.Document) string {
 func documentPathResolver(out, format, profile string, d portal.Document) portal.ResolvePath {
 	return func(origName string) (string, string) {
 		if format == "" {
-			return filepath.Join(out, profile), origName
+			return filepath.Join(out, pathSafe(profile)), pathSafe(origName)
 		}
 		stem := strings.TrimSuffix(origName, filepath.Ext(origName))
 		dir, name := renderPathTemplate(format, profile, d.Date, stem)
@@ -268,6 +268,14 @@ func documentPathResolver(out, format, profile string, d portal.Document) portal
 // is printed to stderr as it happens — useful on a wide date range, where
 // otherwise nothing prints until the final summary line.
 func fetchProfile(p config.Profile, password, out, format, userAgent string, from, to time.Time, sinceLast, overwrite, verbose bool) error {
+	if err := validateProfileName(p.Name); err != nil {
+		return err
+	}
+	if format != "" {
+		if err := validatePathTemplate(format); err != nil {
+			return err
+		}
+	}
 	if password == "" {
 		return errors.New("no stored password (re-add the profile)")
 	}
