@@ -6,6 +6,18 @@ Only the latest release is supported. This is a personal, educational-use
 project (see the [README disclaimer](README.md#disclaimer)) with no formal
 support commitment.
 
+## Portal Destinations
+
+Portal clients accept only the exact profile domains `flatex.at` and
+`flatex.de`. Login, archive navigation, document downloads, and HTTP
+redirects are restricted to the selected `https://konto.<domain>` origin.
+Redirects to other hosts, ports, or HTTP are rejected before sending the
+request, including redirects that would resend credentials in a POST body.
+Server-provided locations containing URL user information are also rejected.
+
+This deliberately fails closed if Flatex changes to a separate login or
+download origin. Verify any such change before extending the allowed origins.
+
 ## Automated Scanning
 
 CodeQL scans every push/PR to `main` (badge on the README). Dependabot opens

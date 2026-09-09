@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sort"
 	"strings"
 	"testing"
@@ -19,6 +20,12 @@ func newTestClient(t *testing.T, srv *httptest.Server) *Client {
 		t.Fatal(err)
 	}
 	c.baseURL = srv.URL
+	// Deliberate test-only seam: permit this local mock origin. Production
+	// clients remain pinned to the HTTPS origin selected by New.
+	c.allowedOrigin, err = url.Parse(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
 	c.delay = 0
 	return c
 }

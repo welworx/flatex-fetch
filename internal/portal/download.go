@@ -170,13 +170,16 @@ func (c *Client) resolveDownloadLocation(from, to time.Time, idx int) (string, e
 // a bare PDF or a zip bundle, depending on how many documents the portal
 // packaged.
 func (c *Client) fetchLocation(loc string, resolvePath ResolvePath, seen map[string]bool, overwrite bool) (string, bool, error) {
-	u := loc
-	if strings.HasPrefix(u, "/") {
-		u = c.baseURL + u
+	u, err := c.resolveLocation(loc)
+	if err != nil {
+		return "", false, err
 	}
 	c.pace()
 	req, err := http.NewRequest(http.MethodGet, u, nil)
 	if err != nil {
+		return "", false, err
+	}
+	if err := c.checkDestination(req.URL); err != nil {
 		return "", false, err
 	}
 	req.Header.Set("User-Agent", c.ua)
