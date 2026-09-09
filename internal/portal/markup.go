@@ -14,21 +14,18 @@ import "regexp"
 const (
 	// portalHostPrefix + domain gives the real host for both login and the
 	// banking app — NOT www.<domain> as originally assumed. Confirmed via
-	// live capture for flatex.at; the "konto." prefix carrying over to
-	// flatex.de is an assumption, not yet confirmed live.
+	// live capture for flatex.at and the public flatex.de login iframe.
 	portalHostPrefix = "konto."
 
-	pathLoginPage = "/login.at/loginIFrameFormAction.do" // GET, seeds tokenId before login
-	pathSSO       = "/login.at/sso"                      // POST, real credential submission (from the login form's own HTML)
+	loginPageAction = "loginIFrameFormAction.do" // GET, seeds tokenId before login
+	ssoAction       = "sso"                      // POST, credential submission
 
 	// accountOverviewAction loads right after a successful login (seen in
 	// every live capture); used to confirm authentication succeeded and to
 	// re-seed tokenId for the banking-app context.
 	accountOverviewAction = "accountOverviewFormAction.do"
 
-	// Banking-app paths embed the profile's domain (/banking-flatex.at/...).
-	// flatex.at is the default and only verified target; flatex.de must
-	// work without code changes but stays untested.
+	// Banking-app segments differ by country; see portalSegmentsFor.
 	archiveListAction = "documentArchiveListFormAction.do" // confirmed
 	headerAreaAction  = "headerAreaFormAction.do"          // confirmed: the top nav menu's own form action
 	ajaxCommandAction = "ajaxCommandServlet"               // confirmed: generic AJAX-engine command dispatcher
@@ -155,7 +152,7 @@ const (
 // and reused unchanged. What differs is the path prefix, the post-login
 // sequence, and the archive widget's field names/markup.
 //
-// Login itself (GET pathLoginPage, POST pathSSO with the same
+// Login itself (GET loginPageAction, POST ssoAction with the same
 // userId/password/deviceDetails fields) is byte-for-byte identical —
 // confirmed from the capture's own request bytes. The account's UI variant
 // is only observable from where the POST /login.at/sso redirect chain
@@ -241,3 +238,16 @@ var (
 	// capture: DocumentViewer.display("/next-desktop.at/downloadData/...", "application/pdf").
 	reNextDownloadURL = regexp.MustCompile(`DocumentViewer\.display\("([^"]+)"`)
 )
+
+// portalSegmentsFor selects the login and classical banking application paths.
+// Germany does not use a country suffix: the public flatex.de classic page
+// embeds /login/loginIFrameFormAction.do, whose form posts to relative sso,
+// and links password recovery under
+// /banking-flatex/. Its document archive uses /banking-flatex/ as well.
+// Austria retains the paths confirmed by the existing live captures.
+func portalSegmentsFor(domain string) (login, banking string) {
+	if domain == "flatex.de" {
+		return "login", "banking-flatex"
+	}
+	return "login.at", "banking-" + domain
+}

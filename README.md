@@ -187,7 +187,9 @@ rendered path is the same across runs.
 
 ## Known Limitations
 
-- flatex.at only; flatex.de is untested (`-domain` exists but unverified).
+- flatex.at is verified end to end. German classical login/archive paths are
+  supported with `-domain flatex.de`, but authenticated listing and download
+  still need a live German test. German flatex-next remains unverified.
 - No 2FA handling — document access currently doesn't require it.
 - The portal caps filtered queries at 100 documents (see "Flexible date
   ranges" under Features for how this is worked around).
