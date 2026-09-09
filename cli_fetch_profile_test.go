@@ -23,7 +23,8 @@ type fakePortal struct {
 	// downloads records the row indices Download was called with, in order,
 	// so tests can assert both which documents were attempted and in what
 	// order.
-	downloads []int
+	downloads      []int
+	seenAtDownload []map[string]bool
 }
 
 func (f *fakePortal) Login(username, password string) error { return nil }
@@ -40,6 +41,11 @@ func (f *fakePortal) ListDocumentsDetailed(from, to time.Time) ([]portal.Documen
 
 func (f *fakePortal) Download(from, to time.Time, idx int, resolvePath portal.ResolvePath, seen map[string]bool, overwrite bool) (string, bool, error) {
 	f.downloads = append(f.downloads, idx)
+	reserved := make(map[string]bool, len(seen))
+	for path, used := range seen {
+		reserved[path] = used
+	}
+	f.seenAtDownload = append(f.seenAtDownload, reserved)
 	if err := f.failIdx[idx]; err != nil {
 		return "", false, err
 	}
@@ -233,5 +239,61 @@ func TestFetchProfileSkippedDocumentNotLoggedAfterEarlierFailure(t *testing.T) {
 				t.Fatalf("log contains an entry for the skipped newer document even though an earlier document in the same run failed: %+v", e)
 			}
 		}
+	}
+}
+
+// A saved singleton key must not hide a newly listed document with the
+// same date and description, even though only one file has been logged.
+func TestFetchProfileNewDocumentSharingLoggedKey(t *testing.T) {
+	f := &fakePortal{docs: []portal.Document{testDoc(0, "2026-01-05", "Trade")}}
+	installFakePortal(t, f)
+	out := t.TempDir()
+	p := config.Profile{Name: "main", Username: "alice", Domain: "flatex.at", Password: "pw"}
+	from, to := f.docs[0].Date, f.docs[0].Date
+	if err := fetchProfile(p, p.Password, out, "", "", from, to, false, false, false); err != nil {
+		t.Fatal(err)
+	}
+	f.docs = append(f.docs, testDoc(1, "2026-01-05", "Trade"))
+	f.downloads = nil
+	if err := fetchProfile(p, p.Password, out, "", "", from, to, false, false, false); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.downloads) != 2 {
+		t.Fatalf("downloads = %v, want both ambiguous rows resolved", f.downloads)
+	}
+	for _, name := range []string{"doc-0.pdf", "doc-1.pdf"} {
+		if _, err := os.Stat(filepath.Join(out, "main", name)); err != nil {
+			t.Fatalf("missing %s: %v", name, err)
+		}
+	}
+	entries, err := readDownloadLog(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(entries[logKey(p.Name, "2026-01-05", "Trade")]); got != 2 {
+		t.Fatalf("logged documents = %d, want 2", got)
+	}
+}
+
+func TestFetchProfileReservesLoggedPaths(t *testing.T) {
+	f := &fakePortal{docs: []portal.Document{testDoc(0, "2026-01-05", "Trade")}}
+	installFakePortal(t, f)
+	out := t.TempDir()
+	p := config.Profile{Name: "main", Username: "alice", Domain: "flatex.at", Password: "pw"}
+	from, to := f.docs[0].Date, f.docs[0].Date.AddDate(0, 0, 1)
+	if err := fetchProfile(p, p.Password, out, "", "", from, to, false, false, false); err != nil {
+		t.Fatal(err)
+	}
+	f.docs = append(f.docs, testDoc(1, "2026-01-06", "Other trade"))
+	f.downloads = nil
+	f.seenAtDownload = nil
+	if err := fetchProfile(p, p.Password, out, "", "", from, to, false, false, false); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.downloads) != 1 || f.downloads[0] != 1 {
+		t.Fatalf("downloads = %v, want only new row 1", f.downloads)
+	}
+	if !f.seenAtDownload[0][filepath.Join(out, "main", "doc-0.pdf")] {
+		t.Fatal("logged path was not reserved for collision handling")
 	}
 }
