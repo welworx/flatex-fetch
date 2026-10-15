@@ -310,6 +310,12 @@ func fetchProfile(p config.Profile, password, out, format, userAgent string, fro
 	if verbose {
 		fmt.Fprintf(os.Stderr, "profile %s: %d document(s) in range\n", p.Name, len(docs))
 	}
+	// A key unique in the saved log may match multiple rows now, for
+	// example when another same-day trade arrives after the last fetch.
+	listedKeys := make(map[string]int, len(docs))
+	for _, d := range docs {
+		listedKeys[logKey(p.Name, d.Date.Format("2006-01-02"), d.Name)]++
+	}
 	seen := map[string]bool{}
 	downloaded, skipped, failedDocs := 0, 0, 0
 	// logging goes false as soon as any document fails. Documents are sorted
@@ -329,8 +335,10 @@ func fetchProfile(p config.Profile, password, out, format, userAgent string, fro
 	// disk. That self-heals; a silent permanent gap does not.
 	logging := true
 	for _, d := range docs {
-		if !overwrite {
-			if _, ok := alreadyLogged(logEntries, p.Name, d); ok {
+		key := logKey(p.Name, d.Date.Format("2006-01-02"), d.Name)
+		if !overwrite && listedKeys[key] == 1 {
+			if path, ok := alreadyLogged(logEntries, p.Name, d); ok {
+				seen[path] = true
 				if verbose {
 					fmt.Fprintf(os.Stderr, "profile %s: skip (logged): %s\n", p.Name, describeDocument(d))
 				}

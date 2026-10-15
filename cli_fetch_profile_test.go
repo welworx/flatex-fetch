@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,7 +24,8 @@ type fakePortal struct {
 	// downloads records the row indices Download was called with, in order,
 	// so tests can assert both which documents were attempted and in what
 	// order.
-	downloads []int
+	downloads      []int
+	seenAtDownload []map[string]bool
 }
 
 func (f *fakePortal) Login(username, password string) error { return nil }
@@ -40,6 +42,11 @@ func (f *fakePortal) ListDocumentsDetailed(from, to time.Time) ([]portal.Documen
 
 func (f *fakePortal) Download(from, to time.Time, idx int, resolvePath portal.ResolvePath, seen map[string]bool, overwrite bool) (string, bool, error) {
 	f.downloads = append(f.downloads, idx)
+	reserved := make(map[string]bool, len(seen))
+	for path, used := range seen {
+		reserved[path] = used
+	}
+	f.seenAtDownload = append(f.seenAtDownload, reserved)
 	if err := f.failIdx[idx]; err != nil {
 		return "", false, err
 	}
@@ -60,7 +67,7 @@ func (f *fakePortal) Download(from, to time.Time, idx int, resolvePath portal.Re
 
 // installFakePortal makes fetchProfile use f instead of a real portal
 // session for the duration of the test.
-func installFakePortal(t *testing.T, f *fakePortal) {
+func installFakePortal(t *testing.T, f portalClient) {
 	t.Helper()
 	orig := newPortalClient
 	newPortalClient = func(domain, userAgent string, log func(string, ...any)) (portalClient, error) {
@@ -233,5 +240,143 @@ func TestFetchProfileSkippedDocumentNotLoggedAfterEarlierFailure(t *testing.T) {
 				t.Fatalf("log contains an entry for the skipped newer document even though an earlier document in the same run failed: %+v", e)
 			}
 		}
+	}
+}
+
+// A saved singleton key must not hide a newly listed document with the
+// same date and description, even though only one file has been logged.
+func TestFetchProfileNewDocumentSharingLoggedKey(t *testing.T) {
+	f := &fakePortal{docs: []portal.Document{testDoc(0, "2026-01-05", "Trade")}}
+	installFakePortal(t, f)
+	out := t.TempDir()
+	p := config.Profile{Name: "main", Username: "alice", Domain: "flatex.at", Password: "pw"}
+	from, to := f.docs[0].Date, f.docs[0].Date
+	if err := fetchProfile(p, p.Password, out, "", "", from, to, false, false, false); err != nil {
+		t.Fatal(err)
+	}
+	f.docs = append(f.docs, testDoc(1, "2026-01-05", "Trade"))
+	f.downloads = nil
+	if err := fetchProfile(p, p.Password, out, "", "", from, to, false, false, false); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.downloads) != 2 {
+		t.Fatalf("downloads = %v, want both ambiguous rows resolved", f.downloads)
+	}
+	for _, name := range []string{"doc-0.pdf", "doc-1.pdf"} {
+		if _, err := os.Stat(filepath.Join(out, "main", name)); err != nil {
+			t.Fatalf("missing %s: %v", name, err)
+		}
+	}
+	entries, err := readDownloadLog(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(entries[logKey(p.Name, "2026-01-05", "Trade")]); got != 2 {
+		t.Fatalf("logged documents = %d, want 2", got)
+	}
+}
+
+func TestFetchProfileReservesLoggedPaths(t *testing.T) {
+	f := &fakePortal{docs: []portal.Document{testDoc(0, "2026-01-05", "Trade")}}
+	installFakePortal(t, f)
+	out := t.TempDir()
+	p := config.Profile{Name: "main", Username: "alice", Domain: "flatex.at", Password: "pw"}
+	from, to := f.docs[0].Date, f.docs[0].Date.AddDate(0, 0, 1)
+	if err := fetchProfile(p, p.Password, out, "", "", from, to, false, false, false); err != nil {
+		t.Fatal(err)
+	}
+	f.docs = append(f.docs, testDoc(1, "2026-01-06", "Other trade"))
+	f.downloads = nil
+	f.seenAtDownload = nil
+	if err := fetchProfile(p, p.Password, out, "", "", from, to, false, false, false); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.downloads) != 1 || f.downloads[0] != 1 {
+		t.Fatalf("downloads = %v, want only new row 1", f.downloads)
+	}
+	if !f.seenAtDownload[0][filepath.Join(out, "main", "doc-0.pdf")] {
+		t.Fatal("logged path was not reserved for collision handling")
+	}
+}
+
+// collidingPortal gives every row the same output filename and distinct
+// bytes (the row index), and resolves collisions the way the real portal
+// does: a path reserved in seen, or an existing file with different bytes,
+// moves to the next _N suffix; an existing file with identical bytes is
+// reported as already on disk.
+type collidingPortal struct{ *fakePortal }
+
+func (c collidingPortal) Download(from, to time.Time, idx int, resolvePath portal.ResolvePath, seen map[string]bool, overwrite bool) (string, bool, error) {
+	c.downloads = append(c.downloads, idx)
+	dir, name := resolvePath("doc.pdf")
+	content := []byte(fmt.Sprintf("%%PDF-1.4 row %d", idx))
+	dest := filepath.Join(dir, name)
+	for i := 2; ; i++ {
+		existing, err := os.ReadFile(dest)
+		if err != nil && !seen[dest] {
+			break
+		}
+		if err == nil && !seen[dest] && bytes.Equal(existing, content) {
+			return dest, true, nil
+		}
+		dest = filepath.Join(dir, fmt.Sprintf("doc_%d.pdf", i))
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", false, err
+	}
+	if err := os.WriteFile(dest, content, 0o600); err != nil {
+		return "", false, err
+	}
+	seen[dest] = true
+	return dest, false, nil
+}
+
+// A new document with the same date, description and output filename as an
+// already logged one must land beside it and be logged, whichever of the
+// two rows the portal lists (and so Download sees) first.
+func TestFetchProfileNewDocumentSameFilenameAsLogged(t *testing.T) {
+	for _, newFirst := range []bool{false, true} {
+		t.Run(fmt.Sprintf("newFirst=%v", newFirst), func(t *testing.T) {
+			f := &fakePortal{docs: []portal.Document{testDoc(0, "2026-01-05", "Trade")}}
+			c := collidingPortal{f}
+			installFakePortal(t, c)
+			out := t.TempDir()
+			p := config.Profile{Name: "main", Username: "alice", Domain: "flatex.at", Password: "pw"}
+			day := f.docs[0].Date
+			if err := fetchProfile(p, p.Password, out, "", "", day, day, false, false, false); err != nil {
+				t.Fatal(err)
+			}
+
+			added := testDoc(1, "2026-01-05", "Trade")
+			if newFirst {
+				f.docs = append([]portal.Document{added}, f.docs...)
+			} else {
+				f.docs = append(f.docs, added)
+			}
+			if err := fetchProfile(p, p.Password, out, "", "", day, day, false, false, false); err != nil {
+				t.Fatal(err)
+			}
+
+			dir := filepath.Join(out, "main")
+			for name, want := range map[string]string{
+				"doc.pdf":   "%PDF-1.4 row 0",
+				"doc_2.pdf": "%PDF-1.4 row 1",
+			} {
+				got, err := os.ReadFile(filepath.Join(dir, name))
+				if err != nil {
+					t.Fatalf("missing %s: %v", name, err)
+				}
+				if string(got) != want {
+					t.Fatalf("%s = %q, want %q", name, got, want)
+				}
+			}
+			entries, err := readDownloadLog(out)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := len(entries[logKey(p.Name, "2026-01-05", "Trade")]); got != 2 {
+				t.Fatalf("logged documents = %d, want 2 (no loss, no duplicate)", got)
+			}
+		})
 	}
 }
