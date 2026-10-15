@@ -81,7 +81,7 @@ FETCH/LIST FLAGS
                       mutually exclusive with -days/-from/-to). If a document fails to
                       download, the resume point is held at that document rather than
                       advancing past it, so the next -since-last run retries it.
-  -all               re-download documents that already exist locally
+  -all               re-download and overwrite documents that already exist locally
   list also:
   -csv               output CSV instead of a table
   -json              output JSON instead of a table
@@ -112,8 +112,10 @@ DOWNLOAD LOG
   and the local path. On a later run, a listed document is skipped without
   contacting the portal again if the log has exactly one matching entry
   (by date/name) and its file still exists on disk; an ambiguous
-  or stale log entry falls back to fetching normally. -all bypasses this
-  and the on-disk check both.
+  or stale log entry falls back to fetching normally: the document is
+  downloaded and an existing file is skipped only if its bytes are identical,
+  otherwise the new one is saved as name_2.pdf. -all bypasses this and the
+  on-disk check both.
 
 ENVIRONMENT
   FLATEX_FETCH_PASSPHRASE   credentials.enc master passphrase (skip the prompt)

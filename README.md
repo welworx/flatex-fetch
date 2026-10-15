@@ -131,8 +131,10 @@ fetch (or list) every profile instead. When multiple profiles are processed,
 `profile` field, so output from `-all-profiles` stays attributable per row.
 
 PDFs land in `~/flatex-downloads/<profile>/` (`-out` overrides), named by
-the portal's own filename. Already-downloaded files are skipped unless
-`-all` is set. Exit status is non-zero if any profile or document failed;
+the portal's own filename. An existing file is skipped only if its bytes
+are identical to the download; otherwise the new one is saved as
+`name_2.pdf`, never overwriting. `-all` re-downloads and overwrites.
+Exit status is non-zero if any profile or document failed;
 a failed document's message identifies it by date/name (the portal has no
 stable per-document URL). `-user-agent` overrides the built-in browser
 User-Agent string.
@@ -142,7 +144,7 @@ Every file `fetch` writes is also appended, one JSON object per line, to
 local path). On later runs, a listed document whose log entry is
 unambiguous (no other document shares its date/name) and whose
 file still exists on disk is skipped without contacting the portal again.
-Ambiguous or stale entries fall back to the normal fetch-then-check-disk
+Ambiguous or stale entries fall back to the normal fetch-then-compare-with-disk
 path. `-all` bypasses both the log and the on-disk check.
 
     # check GitHub for a newer release, and install it

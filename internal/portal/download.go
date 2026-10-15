@@ -134,8 +134,9 @@ type ResolvePath func(origName string) (dir, name string)
 // Download unzips.
 //
 // seen tracks paths written earlier in this run (within-run collisions get
-// _2/_3 suffixes). A file that already exists across runs is skipped
-// unless overwrite is set — that skip IS the dedup (see design spec).
+// _2/_3 suffixes). A file that already exists across runs is skipped only
+// if its bytes are identical (that skip IS the dedup); different bytes get
+// the next free _N suffix instead. overwrite bypasses the check.
 func (c *Client) Download(from, to time.Time, idx int, resolvePath ResolvePath, seen map[string]bool, overwrite bool) (string, bool, error) {
 	loc, err := c.resolveDownloadLocation(from, to, idx)
 	if err != nil {
@@ -299,29 +300,37 @@ func suffixed(name string, i int) string {
 	return fmt.Sprintf("%s_%d%s", strings.TrimSuffix(name, ext), i, ext)
 }
 
-func fileExists(p string) bool {
-	_, err := os.Stat(p)
-	return err == nil
-}
-
 // writeFile resolves resolvePath's (dir, name) for the given original
-// name, then resolves within-run/cross-run dedup on that full path and, if
-// not skipped, writes content 0700/0600 — same posture as the credentials
-// store, since these are financial documents.
+// name, then resolves within-run/cross-run dedup on that full path (an
+// existing file is skipped only if byte-identical, else the next free _N
+// name is used) and, if not skipped, writes content 0700/0600 — same
+// posture as the credentials store, since these are financial documents.
 func writeFile(name string, content []byte, resolvePath ResolvePath, seen map[string]bool, overwrite bool) (string, bool, error) {
 	destDir, name := resolvePath(name)
 	dest := filepath.Join(destDir, name)
-	switch {
-	case seen[dest]:
-		for i := 2; ; i++ {
-			cand := filepath.Join(destDir, suffixed(name, i))
-			if !seen[cand] && !fileExists(cand) {
-				dest = cand
-				break
-			}
+	for i := 1; ; i++ {
+		if i > 1 {
+			dest = filepath.Join(destDir, suffixed(name, i))
 		}
-	case fileExists(dest) && !overwrite:
-		return dest, true, nil
+		if seen[dest] {
+			continue
+		}
+		if overwrite {
+			break
+		}
+		existing, err := os.ReadFile(dest)
+		if errors.Is(err, os.ErrNotExist) {
+			break
+		}
+		if err != nil {
+			return "", false, err
+		}
+		// A shared filename is not document identity. Only matching bytes
+		// are safe to skip; preserve a different document at this path.
+		if bytes.Equal(existing, content) {
+			seen[dest] = true
+			return dest, true, nil
+		}
 	}
 
 	if err := os.MkdirAll(destDir, 0o700); err != nil {
