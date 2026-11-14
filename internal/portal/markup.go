@@ -121,6 +121,10 @@ var (
 	// Document no longer carries a category field for either UI.
 	reDocDate = regexp.MustCompile(`class="C2[^"]*"[^>]*>([^<]*)</td>`)
 	reDocName = regexp.MustCompile(`class="C4[^"]*"[^>]*><div class="Ellipsis">([^<]*)</div>`)
+
+	// Expliziter Leerstatus des klassischen Archivs, beobachtet am 14.11.2026.
+	// Fehlende Ergebnisfragmente allein sind weiterhin kein Leerbeweis.
+	reEmptyArchive = regexp.MustCompile(`(?s)<div class="RetrieveStatus">\s*(?:<!--.*?-->\s*)*Keine Dokumente vorhanden\.\s*(?:<!--.*?-->\s*)*</div>`)
 )
 
 // capWarning is the literal UI text the portal shows when a listing's

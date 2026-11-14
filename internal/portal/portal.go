@@ -617,12 +617,16 @@ func (c *Client) windowedDocuments(from, to time.Time) ([]Document, error) {
 	}
 	days := int(to.Sub(from).Hours() / 24)
 	if !strings.Contains(body, tableMarker) {
-		if days == 0 {
-			// Can't narrow further and still no usable result — return
-			// what we have (nothing) rather than fail the whole listing
-			// over an extreme edge case.
-			c.logf("  %s..%s: no results", from.Format("2006-01-02"), to.Format("2006-01-02"))
+		empty, err := explicitEmptyArchive(body)
+		if err != nil {
+			return nil, err
+		}
+		if !strings.Contains(body, capWarning) && empty {
+			c.logf("  %s..%s: explicit empty result", from.Format("2006-01-02"), to.Format("2006-01-02"))
 			return nil, nil
+		}
+		if days == 0 {
+			return nil, fmt.Errorf("keine eindeutige Archivantwort für %s; Vollständigkeit nicht nachgewiesen", from.Format("2006-01-02"))
 		}
 		c.logf("  %s..%s: no table rendered, splitting", from.Format("2006-01-02"), to.Format("2006-01-02"))
 		return c.splitDocuments(from, to, days)
@@ -633,7 +637,10 @@ func (c *Client) windowedDocuments(from, to time.Time) ([]Document, error) {
 	}
 	docs := parseDocuments(rowsHTML)
 	c.logf("  parsed %d document(s)", len(docs))
-	if days > 0 && (len(docs) >= capLimit || strings.Contains(body, capWarning)) {
+	if len(docs) >= capLimit || strings.Contains(body, capWarning) {
+		if days == 0 {
+			return nil, fmt.Errorf("erreichtes Archivlimit am %s; Vollständigkeit nicht nachgewiesen", from.Format("2006-01-02"))
+		}
 		c.logf("  %s..%s: capped at %d, splitting", from.Format("2006-01-02"), to.Format("2006-01-02"), len(docs))
 		return c.splitDocuments(from, to, days)
 	}

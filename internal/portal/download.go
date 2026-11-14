@@ -65,6 +65,26 @@ func replacePortionsHTML(body string) (string, error) {
 	return sb.String(), nil
 }
 
+// Die Oberfläche liefert den Leerstatus vollständig oder als einzelnes Textdelta.
+func explicitEmptyArchive(body string) (bool, error) {
+	var resp ajaxResponse
+	if err := json.Unmarshal([]byte(body), &resp); err != nil {
+		return false, fmt.Errorf("ungültige Archivantwort: %w", err)
+	}
+	for _, cmd := range resp.Commands {
+		if cmd.Command != "replacePortions" {
+			continue
+		}
+		for i := 1; i < len(cmd.DeltasToApply); i += 2 {
+			fragment := cmd.DeltasToApply[i]
+			if strings.TrimSpace(fragment) == "Keine Dokumente vorhanden." || reEmptyArchive.MatchString(fragment) {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
 // fullPageReplaceLocation reports whether body is a "fullPageReplace"
 // command (the server's signal that this session/page state is stale) and,
 // if so, its fetchLocation.
